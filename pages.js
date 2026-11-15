@@ -4,7 +4,7 @@ const allLinks = document.querySelectorAll("a")
 const productsLink = document.querySelector(".linkProducts")
 const ordersLink = document.querySelector(".linkOrders")
 
-function removeClasses(){
+function removeClasses() {
     allLinks.forEach(link => {
         link.classList.remove("active")
     });
@@ -305,7 +305,7 @@ function productsPage() {
 }
 
 function ordersPage() {
-    removeClasses() 
+    removeClasses()
     ordersLink.classList.add("active")
 
     content.innerHTML = `

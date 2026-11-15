@@ -6,8 +6,6 @@ dotenv.config({
     path: new URL('./.env', import.meta.url)
 });
 
-console.log('Usuário no db.js:', process.env.DB_USER);
-
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,

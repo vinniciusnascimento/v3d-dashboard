@@ -14,12 +14,6 @@ app.use(cors());
 
 app.use(express.json());
 
-app.get('/teste', (req, res) => {
-    res.json({
-        mensagem: 'Servidor funcionando!'
-    });
-});
-
 app.use('/api', routes);
 
 const PORT = Number(process.env.PORT) || 5000;

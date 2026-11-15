@@ -9,6 +9,8 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+// /produtos
+
 router.get('/produtos', async (req, res) => {
     try {
         const [produtos] = await db.query(
@@ -104,6 +106,82 @@ router.delete('/produtos/:id', async (req, res) => {
     } catch (erro) {
         console.error(erro);
         res.status(500).json({ erro: "Erro ao excluir produto" });
+    }
+});
+
+// /pedidos
+
+router.get('/pedidos', async (req, res) => {
+    try {
+        const [pedidos] = await db.query(
+            'SELECT * FROM orders'
+        );
+
+        res.json(pedidos);
+
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({
+            erro: 'Erro ao buscar pedidos'
+        });
+    }
+});
+
+router.post("/pedidos", async (req, res) => {
+    try {
+        const {
+            customer,
+            product,
+            quantity,
+            price,
+            status,
+            deadline,
+            notes,
+            position
+        } = req.body;
+
+        if (!customer || !product) {
+            return res.status(400).json({
+                erro: "Cliente e produto são obrigatórios"
+            });
+        }
+
+        const [result] = await db.query(
+            `INSERT INTO orders
+            (customer, product, quantity, price, status, deadline, notes, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                customer,
+                product,
+                quantity ?? 1,
+                price ?? null,
+                status ?? "aguardando",
+                deadline || null,
+                notes ?? null,
+                position ?? 0
+            ]
+        );
+
+        const id = result.insertId;
+        const number = 1000 + id;
+
+        await db.query(
+            "UPDATE orders SET number = ? WHERE id = ?",
+            [number, id]
+        );
+
+        res.status(201).json({
+            message: "Pedido criado com sucesso",
+            id,
+            number
+        });
+
+    } catch (erro) {
+        console.error(erro);
+
+        res.status(500).json({
+            erro: "Erro ao salvar pedido"
+        });
     }
 });
 
