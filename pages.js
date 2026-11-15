@@ -456,4 +456,5 @@ function ordersPage() {
 </div>
         `;
     lucide.createIcons();
+    initOrdersPage();
 }

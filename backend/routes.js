@@ -111,34 +111,22 @@ router.delete('/produtos/:id', async (req, res) => {
 
 // /pedidos
 
-router.get('/pedidos', async (req, res) => {
+router.get("/orders", async (req, res) => {
     try {
-        const [pedidos] = await db.query(
-            'SELECT * FROM orders'
+        const [rows] = await db.query(
+            "SELECT * FROM orders ORDER BY position ASC, id ASC"
         );
 
-        res.json(pedidos);
-
+        res.json(rows);
     } catch (erro) {
         console.error(erro);
-        res.status(500).json({
-            erro: 'Erro ao buscar pedidos'
-        });
+        res.status(500).json({ erro: "Erro ao buscar pedidos" });
     }
 });
 
-router.post("/pedidos", async (req, res) => {
+router.post("/orders", async (req, res) => {
     try {
-        const {
-            customer,
-            product,
-            quantity,
-            price,
-            status,
-            deadline,
-            notes,
-            position
-        } = req.body;
+        const { customer, product, quantity, price, deadline, notes } = req.body;
 
         if (!customer || !product) {
             return res.status(400).json({
@@ -146,43 +134,96 @@ router.post("/pedidos", async (req, res) => {
             });
         }
 
+        // Número sequencial e posição no fim da coluna "aguardando"
+        const [[{ nextNumber }]] = await db.query(
+            "SELECT COALESCE(MAX(number), 0) + 1 AS nextNumber FROM orders"
+        );
+        const [[{ nextPosition }]] = await db.query(
+            "SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM orders WHERE status = 'aguardando'"
+        );
+
         const [result] = await db.query(
             `INSERT INTO orders
-            (customer, product, quantity, price, status, deadline, notes, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                (number, customer, product, quantity, price, status, deadline, notes, position)
+             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?)`,
             [
+                nextNumber,
                 customer,
                 product,
-                quantity ?? 1,
+                quantity || 1,
                 price ?? null,
-                status ?? "aguardando",
                 deadline || null,
-                notes ?? null,
-                position ?? 0
+                notes || null,
+                nextPosition
             ]
         );
 
-        const id = result.insertId;
-        const number = 1000 + id;
+        res.status(201).json({ id: result.insertId, number: nextNumber });
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao criar pedido" });
+    }
+});
 
-        await db.query(
-            "UPDATE orders SET number = ? WHERE id = ?",
-            [number, id]
+
+router.put("/orders/reordenar", async (req, res) => {
+    const { status, ids } = req.body;
+    const validos = ["aguardando", "imprimindo", "finalizacao", "concluido"];
+
+    if (!validos.includes(status) || !Array.isArray(ids)) {
+        return res.status(400).json({ erro: "Dados inválidos" });
+    }
+
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        for (let i = 0; i < ids.length; i++) {
+            await conn.query(
+                "UPDATE orders SET status = ?, position = ? WHERE id = ?",
+                [status, i, ids[i]]
+            );
+        }
+
+        await conn.commit();
+        res.json({ ok: true });
+    } catch (erro) {
+        await conn.rollback();
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao reordenar pedidos" });
+    } finally {
+        conn.release();
+    }
+});
+
+router.delete("/orders/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [result] = await db.query(
+            `DELETE FROM orders
+             WHERE id = ?`,
+            [id]
         );
 
-        res.status(201).json({
-            message: "Pedido criado com sucesso",
-            id,
-            number
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                erro: "Pedido não encontrado"
+            });
+        }
+
+        res.json({
+            message: "Pedido excluído com sucesso"
         });
 
     } catch (erro) {
         console.error(erro);
 
         res.status(500).json({
-            erro: "Erro ao salvar pedido"
+            erro: "Erro ao excluir pedido"
         });
     }
 });
+
 
 export default router;
