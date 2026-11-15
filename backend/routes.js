@@ -1,20 +1,56 @@
 import express from 'express';
 import db from './db.js';
 import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
 // /produtos
 
+// Na Vercel o disco é somente leitura (e não persiste), então a imagem
+// fica na memória durante o upload e é gravada no MySQL (tabela product_images).
+const TIPOS_PERMITIDOS = ['image/png', 'image/jpeg', 'image/webp'];
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 },   // 2 MB, igual ao front
+    fileFilter: (req, file, cb) => {
+        if (!TIPOS_PERMITIDOS.includes(file.mimetype)) {
+            return cb(new Error('TIPO_INVALIDO'));
+        }
+        cb(null, true);
+    }
+});
+
+// Roda o multer e devolve JSON em vez de deixar o Express responder 500 genérico
+const receberImagem = (req, res, next) => {
+    upload.single('image')(req, res, (erro) => {
+        if (!erro) return next();
+
+        if (erro.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ erro: 'A imagem deve ter no máximo 2 MB' });
+        }
+        if (erro.message === 'TIPO_INVALIDO') {
+            return res.status(400).json({ erro: 'Use uma imagem PNG, JPG ou WebP' });
+        }
+        console.error(erro);
+        res.status(400).json({ erro: 'Erro ao receber a imagem' });
+    });
+};
+
+const salvarImagem = (conn, productId, file) =>
+    conn.query(
+        `INSERT INTO product_images (product_id, mime, data)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE mime = VALUES(mime), data = VALUES(data)`,
+        [productId, file.mimetype, file.buffer]
+    );
+
 router.get('/produtos', async (req, res) => {
     try {
         const [produtos] = await db.query(
-            'SELECT * FROM products'
+            `SELECT p.*, (pi.product_id IS NOT NULL) AS has_image
+               FROM products p
+          LEFT JOIN product_images pi ON pi.product_id = p.id`
         );
 
         res.json(produtos);
@@ -27,46 +63,50 @@ router.get('/produtos', async (req, res) => {
     }
 });
 
-const storage = multer.diskStorage({
-    // ajuste para a pasta assets/products do seu front
-    destination: path.join(__dirname, "../assets/products"),
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, file.originalname);   // nome único, evita sobrescrever
+router.get('/produtos/:id/imagem', async (req, res) => {
+    try {
+        const [[img]] = await db.query(
+            'SELECT mime, data FROM product_images WHERE product_id = ?',
+            [req.params.id]
+        );
+
+        if (!img) return res.status(404).end();
+
+        res.set('Content-Type', img.mime);
+        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.send(img.data);
+    } catch (erro) {
+        console.error(erro);
+        res.status(500).end();
     }
 });
 
-const upload = multer({
-    storage,
-    limits: { fileSize: 2 * 1024 * 1024 }   // 2 MB, igual ao front
-});
-
-router.post("/produtos", upload.single("image"), async (req, res) => {
+router.post("/produtos", receberImagem, async (req, res) => {
     try {
         const { name, desc, category, price, size, material, colors } = req.body;
-        const image = req.file ? req.file.filename : null;
+        const file = req.file;
 
-        await db.query(
+        const [result] = await db.query(
             `INSERT INTO products (name, \`desc\`, category, price, size, material, colors, image)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, desc, category, price || null, size, material, colors, image]
+            [name, desc, category, price || null, size, material, colors, file ? file.originalname : null]
         );
 
-        res.status(201).json({ message: "Produto criado" });
+        if (file) await salvarImagem(db, result.insertId, file);
+
+        res.status(201).json({ message: "Produto criado", id: result.insertId });
     } catch (erro) {
         console.error(erro);
         res.status(500).json({ erro: "Erro ao salvar produto" });
     }
 });
 
-router.put('/produtos/:id', upload.single('image'), async (req, res) => {
+router.put('/produtos/:id', receberImagem, async (req, res) => {
     try {
-        console.log("id:", req.params.id);
-        console.log("body:", req.body);
-        console.log("file:", req.file);
         const { id } = req.params;
         const { name, desc, category, price, size, material, colors } = req.body;
-        const image = req.file ? req.file.filename : null;
+        const file = req.file;
+        const image = file ? file.originalname : null;
 
         const [result] = await db.query(
             `UPDATE products
@@ -81,6 +121,8 @@ router.put('/produtos/:id', upload.single('image'), async (req, res) => {
             return res.status(404).json({ erro: "Produto não encontrado" });
         }
 
+        if (file) await salvarImagem(db, id, file);
+
         res.json({ message: "Produto atualizado" });
     } catch (erro) {
         console.error(erro);
@@ -91,6 +133,8 @@ router.put('/produtos/:id', upload.single('image'), async (req, res) => {
 router.delete('/produtos/:id', async (req, res) => {
     try {
         const { id } = req.params;
+
+        await db.query('DELETE FROM product_images WHERE product_id = ?', [id]);
 
         const [result] = await db.query(
             `DELETE FROM products

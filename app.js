@@ -289,8 +289,8 @@ function renderProducts(produtos) {
             return `
                 <article class="product-card" data-id="${produto.id}" style="--i:${Math.min(index, 12)}">
                     <div class="product-image">
-                        ${produto.image
-                    ? `<img src="${IMAGES_PATH}${escapeHtml(produto.image)}" alt="${escapeHtml(produto.name)}" loading="lazy">`
+                        ${produto.has_image || produto.image
+                    ? `<img src="${produto.has_image ? `${API_URL}/${produto.id}/imagem` : IMAGES_PATH + escapeHtml(produto.image)}" alt="${escapeHtml(produto.name)}" loading="lazy">`
                     : `<i data-lucide="image"></i>`}
                     </div>
 
