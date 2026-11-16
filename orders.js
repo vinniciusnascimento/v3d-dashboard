@@ -125,11 +125,103 @@ async function loadOrders(newId = null) {
     }
 }
 
-// Preenche a sugestão de produtos do modal com o catálogo
-async function loadProductSuggestions() {
-    const datalist = document.getElementById("order-product-list");
-    if (!datalist) return;
+/* ---------- Seletor de produtos (Product Picker) ---------- */
 
+let pickerProducts = [];
+let pickerOutsideHandler = null;
+
+function productImageSrc(p) {
+    if (p.has_image) return `${API_URL}/${p.id}/imagem`;
+    if (p.image) return IMAGES_PATH + p.image;
+    return null;
+}
+
+function renderProductPicker(filter = "") {
+    const grid = document.getElementById("picker-grid");
+    if (!grid) return;
+
+    const term = filter.toLowerCase().trim();
+    const list = pickerProducts.filter((p) => (p.name || "").toLowerCase().includes(term));
+
+    if (!list.length) {
+        grid.innerHTML = `<p class="picker-empty">Nenhum produto encontrado.</p>`;
+        return;
+    }
+
+    grid.innerHTML = list.map((p, index) => {
+        const src = productImageSrc(p);
+
+        return `
+        <button type="button" class="picker-card" data-id="${p.id}" style="--i:${Math.min(index, 10)}">
+                <span class="picker-card-image">
+                    ${src
+                ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">`
+                : `<i data-lucide="image"></i>`}
+                </span>
+                <span class="picker-card-name">${escapeHtml(p.name)}</span>
+                <span class="picker-card-price">${formatPrice(p.price)}</span>
+            </button>
+        `;
+    }).join("");
+
+    lucide.createIcons();
+}
+
+function initProductPicker() {
+    const picker = document.getElementById("product-picker");
+    const input = document.getElementById("order-product");
+    const panel = document.getElementById("picker-panel");
+    const grid = document.getElementById("picker-grid");
+    const priceInput = document.getElementById("order-price");
+    const quantityInput = document.getElementById("order-quantity");
+
+    if (!picker || !input || !panel || !grid) return;
+
+    const open = () => {
+        const wasClosed = panel.hidden;
+
+        renderProductPicker(input.value);
+        grid.classList.toggle("animate-cards", wasClosed); // só anima ao abrir, não a cada tecla
+        panel.hidden = false;
+    };
+    const close = () => { panel.hidden = true; };
+
+    input.addEventListener("focus", open);
+    input.addEventListener("click", open);
+    input.addEventListener("input", open); // filtra enquanto digita
+
+    grid.addEventListener("click", (event) => {
+        const card = event.target.closest(".picker-card");
+        if (!card) return;
+
+        const product = pickerProducts.find((p) => String(p.id) === card.dataset.id);
+        if (!product) return;
+
+        input.value = product.name;
+
+        // Se o valor total ainda está vazio, sugere preço × quantidade
+        if (priceInput.value === "" && product.price != null) {
+            const qty = Number(quantityInput.value) || 1;
+            priceInput.value = (Number(product.price) * qty).toFixed(2);
+        }
+
+        close();
+    });
+
+    // Fecha ao clicar fora (remove o listener da visita anterior)
+    if (pickerOutsideHandler) document.removeEventListener("click", pickerOutsideHandler);
+
+    pickerOutsideHandler = (event) => {
+        const currentPicker = document.getElementById("product-picker");
+        if (currentPicker && !currentPicker.contains(event.target)) {
+            document.getElementById("picker-panel").hidden = true;
+        }
+    };
+    document.addEventListener("click", pickerOutsideHandler);
+}
+
+// Busca o catálogo e prepara o seletor
+async function loadProductSuggestions() {
     try {
         let produtos = typeof allProducts !== "undefined" ? allProducts : [];
 
@@ -141,11 +233,9 @@ async function loadProductSuggestions() {
             produtos = Array.isArray(data) ? data : (data.produtos || data.data || []);
         }
 
-        datalist.innerHTML = produtos
-            .map((p) => `<option value="${escapeHtml(p.name)}"></option>`)
-            .join("");
+        pickerProducts = produtos;
     } catch (erro) {
-        console.error("Erro ao carregar produtos para sugestão:", erro);
+        console.error("Erro ao carregar produtos para o seletor:", erro);
     }
 }
 
@@ -296,9 +386,12 @@ function initOrderModals() {
     };
     document.addEventListener("keydown", ordersEscHandler);
 
+    initProductPicker();
+
     /* Novo pedido */
     newOrderBtn.addEventListener("click", () => {
         orderForm.reset();
+        document.getElementById("picker-panel").hidden = true;
         orderModal.hidden = false;
         document.getElementById("order-customer").focus();
     });

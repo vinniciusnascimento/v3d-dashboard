@@ -392,9 +392,14 @@ function ordersPage() {
 
                 <div class="form-group">
                     <label for="order-product">Produto *</label>
-                    <input type="text" id="order-product" list="order-product-list"
-                        placeholder="Escolha um produto ou digite" required maxlength="120" autocomplete="off">
-                    <datalist id="order-product-list"></datalist>
+                    <div class="product-picker" id="product-picker">
+                        <input type="text" id="order-product"
+                            placeholder="Clique para escolher ou digite" required maxlength="120" autocomplete="off">
+
+                        <div class="picker-panel" id="picker-panel" hidden>
+                            <div class="picker-grid" id="picker-grid"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-grid">
