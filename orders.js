@@ -41,6 +41,15 @@ function isOverdue(order) {
     return deadline < today;
 }
 
+/* ---------- Etapas ---------- */
+
+const ORDER_STATUSES = [
+    { value: "aguardando", label: "Aguardando" },
+    { value: "imprimindo", label: "Imprimindo" },
+    { value: "finalizacao", label: "Finalização" },
+    { value: "concluido", label: "Concluído" },
+];
+
 /* ---------- Card ---------- */
 
 function createOrderCard(order, isNew = false) {
@@ -74,6 +83,15 @@ function createOrderCard(order, isNew = false) {
             : `<span class="order-deadline"><i data-lucide="calendar"></i>Sem prazo</span>`}
                 <span class="order-price">${formatPrice(order.price)}</span>
             </div>
+
+            <label class="order-move">
+                <span>Mover para</span>
+                <select class="order-status-select" data-id="${order.id}" aria-label="Mover pedido ${formatOrderNumber(order.number)} para outra etapa">
+                    ${ORDER_STATUSES.map((s) =>
+                        `<option value="${s.value}"${s.value === order.status ? " selected" : ""}>${s.label}</option>`
+                    ).join("")}
+                </select>
+            </label>
         </article>
     `;
 }
@@ -191,6 +209,51 @@ async function persistColumn(list) {
         alert("Não foi possível mover o pedido.");
         loadOrders(); // volta ao estado salvo no banco
     }
+}
+
+/* ---------- Mover pelo seletor do card ---------- */
+
+async function moveOrderToStatus(id, newStatus) {
+    const order = allOrders.find((o) => String(o.id) === String(id));
+    if (!order || order.status === newStatus) return;
+
+    // O pedido entra no fim da coluna de destino
+    const destination = allOrders
+        .filter((o) => o.status === newStatus && o !== order)
+        .sort((a, b) => a.position - b.position);
+
+    order.status = newStatus;
+    order.position = destination.length;
+
+    const ids = [...destination.map((o) => Number(o.id)), Number(order.id)];
+
+    renderOrders();
+
+    try {
+        const response = await fetch(`${ORDERS_API_URL}/reordenar`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus, ids }),
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (erro) {
+        console.error("Erro ao mover pedido:", erro);
+        alert("Não foi possível mover o pedido.");
+        loadOrders(); // volta ao estado salvo no banco
+    }
+}
+
+function initOrderStatusSelect() {
+    const board = document.getElementById("orders-board");
+    if (!board) return;
+
+    board.addEventListener("change", (event) => {
+        const select = event.target.closest(".order-status-select");
+        if (!select) return;
+
+        moveOrderToStatus(select.dataset.id, select.value);
+    });
 }
 
 function initOrdersDragAndDrop() {
@@ -380,6 +443,7 @@ function initOrderModals() {
    ============================================================ */
 function initOrdersPage() {
     initOrdersDragAndDrop();
+    initOrderStatusSelect();
     initOrderModals();
 
     lucide.createIcons();
