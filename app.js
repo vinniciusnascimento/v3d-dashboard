@@ -55,7 +55,7 @@ navLinks.forEach((link) => {
 /* ============================================================
    Utilitários
    ============================================================ */
-const API_URL = "/api/produtos";
+const API_URL = "http://localhost:5000/api/produtos";
 const IMAGES_PATH = "assets/products/";
 
 let productsList = null;   // recriado a cada vez que a página de produtos é exibida
