@@ -10,7 +10,17 @@
 </head>
 
 <body>
-    <div class="sidebar">
+    <!-- Barra superior (aparece só no celular/tablet) -->
+    <header class="topbar">
+        <button type="button" id="menu-toggle" class="menu-toggle" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">
+            <i data-lucide="menu"></i>
+        </button>
+        <img src="assets/logo-v3d.webp" alt="Logo V3D">
+    </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <div class="sidebar" id="sidebar">
         <img src="assets/logo-v3d.webp" alt="Logo V3D">
 
         <nav>
