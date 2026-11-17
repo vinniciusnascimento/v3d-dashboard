@@ -3,7 +3,7 @@
    Depende de: app.js (escapeHtml, formatPrice, API_URL) e lucide
    ============================================================ */
 
-const ORDERS_API_URL = "/api/orders";
+const ORDERS_API_URL = "http://localhost:5000/api/orders";
 
 let allOrders = [];
 let draggedCard = null;
@@ -460,6 +460,78 @@ function initOrdersDragAndDrop() {
     });
 }
 
+/* ---------- Orçamento em PDF ---------- */
+function exportOrderQuotePDF(order) {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) {
+        alert("A biblioteca de PDF não carregou. Verifique a conexão com a internet e tente novamente.");
+        return false;
+    }
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const green = [63, 125, 14];
+    const money = (value) => value == null ? "A combinar" : formatPrice(value);
+    const date = new Date().toLocaleDateString("pt-BR");
+    const number = order.number != null ? formatOrderNumber(order.number) : (order.id != null ? `#${order.id}` : "");
+    const line = (label, value, y) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(10);
+        pdf.setTextColor(95, 105, 95);
+        pdf.text(label, 18, y);
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(25, 30, 25);
+        const wrapped = pdf.splitTextToSize(String(value ?? "—"), 115);
+        pdf.text(wrapped, 77, y);
+        return y + Math.max(11, wrapped.length * 6 + 4);
+    };
+
+    pdf.setFillColor(...green);
+    pdf.rect(0, 0, 210, 38, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(24);
+    pdf.text("V3D", 18, 19);
+    pdf.setFontSize(11);
+    pdf.text("ORÇAMENTO", 18, 29);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(date, 192, 19, { align: "right" });
+    if (number) pdf.text(`Pedido ${number}`, 192, 29, { align: "right" });
+
+    let y = 54;
+    y = line("Cliente", order.customer, y);
+    y = line("Produto", order.product, y);
+    y = line("Quantidade", order.quantity || 1, y);
+    if (order.deadline) {
+        const d = parseDeadline(order.deadline);
+        y = line("Prazo de entrega", d ? d.toLocaleDateString("pt-BR") : order.deadline, y);
+    }
+    if (order.payment_method) {
+        y = line("Pagamento", paymentDescription(order.payment_method, order.installments), y);
+    }
+    if (order.notes) {
+        y = line("Observações", order.notes, y);
+    }
+    y += 6;
+    pdf.setDrawColor(210, 220, 205);
+    pdf.line(18, y, 192, y);
+    y += 15;
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(...green);
+    pdf.setFontSize(12);
+    pdf.text("VALOR TOTAL", 18, y);
+    pdf.setFontSize(18);
+    pdf.text(money(order.price), 192, y, { align: "right" });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(100, 105, 100);
+    pdf.text("Orçamento emitido pela V3D. Condições sujeitas a confirmação.", 18, 278);
+
+    const safeName = String(order.customer || "cliente").normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 50);
+    pdf.save(`orcamento-v3d-${safeName}${number ? `-${number.replace("#", "")}` : ""}.pdf`);
+    return true;
+}
+
 /* ---------- Modais: novo pedido e exclusão ---------- */
 
 function initOrderModals() {
@@ -469,12 +541,16 @@ function initOrderModals() {
     const newOrderBtn = document.getElementById("new-order");
     const confirmDelete = document.getElementById("confirm-order-delete");
     const board = document.getElementById("orders-board");
+    const quoteModal = document.getElementById("order-quote-modal");
+    const quoteYes = document.getElementById("order-quote-yes");
+    const quoteNo = document.getElementById("order-quote-no");
+    let quoteOrder = null;
 
     if (!orderModal || !deleteModal || !orderForm || !newOrderBtn || !board) return;
 
     const closeModal = (modal) => { modal.hidden = true; };
 
-    [orderModal, deleteModal].forEach((modal) => {
+    [orderModal, deleteModal, quoteModal].filter(Boolean).forEach((modal) => {
         modal.querySelectorAll("[data-close-modal]").forEach((btn) => {
             btn.addEventListener("click", () => closeModal(modal));
         });
@@ -489,9 +565,14 @@ function initOrderModals() {
 
     ordersEscHandler = (event) => {
         if (event.key !== "Escape") return;
-        [orderModal, deleteModal].forEach(closeModal);
+        [orderModal, deleteModal, quoteModal].filter(Boolean).forEach(closeModal);
     };
     document.addEventListener("keydown", ordersEscHandler);
+
+    quoteNo?.addEventListener("click", () => closeModal(quoteModal));
+    quoteYes?.addEventListener("click", () => {
+        if (quoteOrder && exportOrderQuotePDF(quoteOrder)) closeModal(quoteModal);
+    });
 
     initProductPicker();
 
@@ -544,6 +625,11 @@ function initOrderModals() {
 
             orderForm.reset();
             closeModal(orderModal);
+            quoteOrder = { ...body, ...created };
+            if (quoteModal?.isConnected) {
+                quoteModal.hidden = false;
+                quoteYes?.focus();
+            }
             await loadOrders(created?.id ?? null); // o card novo entra com animação
         } catch (erro) {
             console.error("Erro ao criar pedido:", erro);
@@ -701,6 +787,7 @@ function openOrderDetail(id) {
     const modal = document.getElementById("order-detail-modal");
     const order = allOrders.find((o) => String(o.id) === String(id));
     if (!modal || !order) return;
+    modal.dataset.orderId = order.id;
 
     const setText = (elId, text) => {
         document.getElementById(elId).textContent = text;
@@ -749,6 +836,11 @@ function initOrderDetailModal() {
     if (!modal || !board) return;
 
     const closeModal = () => { modal.hidden = true; };
+
+    document.getElementById("order-detail-export-pdf").addEventListener("click", () => {
+        const order = allOrders.find(o => String(o.id) === modal.dataset.orderId);
+        if (order) exportOrderQuotePDF(order);
+    });
 
     modal.querySelectorAll("[data-close-modal]").forEach((btn) => {
         btn.addEventListener("click", closeModal);

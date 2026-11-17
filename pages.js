@@ -285,7 +285,8 @@ const productsTemplate = `
         </div>
     </div>
 
-    <!-- Modal de confirmação de exclusão -->
+    <!-- Pergunta sobre exportação após salvar o pedido -->
+<!-- Modal de confirmação de exclusão -->
     <div class="modal-overlay" id="delete-modal" hidden>
         <div class="product-modal confirm-modal" role="alertdialog" aria-modal="true"
             aria-labelledby="delete-modal-title" aria-describedby="delete-modal-text">
@@ -464,6 +465,20 @@ function ordersPage() {
 </div>
 
 <!-- Modal de confirmação de exclusão -->
+<div class="modal-overlay" id="order-quote-modal" hidden>
+    <div class="product-modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="order-quote-title">
+        <div class="confirm-body">
+            <div class="confirm-icon"><i data-lucide="file-text"></i></div>
+            <h2 id="order-quote-title">Pedido criado com sucesso!</h2>
+            <p>Deseja exportar um PDF com o orçamento para enviar ao cliente?</p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-cancel" id="order-quote-no">Agora não</button>
+            <button type="button" class="btn-primary" id="order-quote-yes"><i data-lucide="download"></i> Exportar PDF</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="order-delete-modal" hidden>
     <div class="product-modal confirm-modal" role="alertdialog" aria-modal="true"
         aria-labelledby="order-delete-title" aria-describedby="order-delete-text">
@@ -622,6 +637,9 @@ function ordersPage() {
 
         <div class="modal-footer">
             <button type="button" class="btn-cancel" data-close-modal>Fechar</button>
+            <button type="button" class="btn-primary" id="order-detail-export-pdf">
+                <i data-lucide="download"></i> Exportar PDF
+            </button>
         </div>
     </div>
 </div>
