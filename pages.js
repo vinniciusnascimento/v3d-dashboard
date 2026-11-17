@@ -455,6 +455,68 @@ function ordersPage() {
     </div>
 </div>
 
+<!-- Modal de edição do pedido -->
+<div class="modal-overlay" id="order-edit-modal" hidden>
+    <div class="product-modal" role="dialog" aria-modal="true" aria-labelledby="order-edit-title">
+
+        <div class="modal-header">
+            <div>
+                <h2 id="order-edit-title">Editar pedido</h2>
+                <p>Altere as informações do pedido.</p>
+            </div>
+            <button type="button" class="icon-button" data-close-modal aria-label="Fechar">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <form id="order-edit-form">
+            <div class="form-body">
+
+                <div class="form-group">
+                    <label for="edit-order-customer">Cliente *</label>
+                    <input type="text" id="edit-order-customer" required maxlength="120">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-order-product">Produto *</label>
+                    <input type="text" id="edit-order-product" list="order-product-list"
+                        required maxlength="120" autocomplete="off">
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-order-quantity">Quantidade *</label>
+                        <input type="number" id="edit-order-quantity" min="1" step="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-order-price">Valor total (R$)</label>
+                        <input type="number" id="edit-order-price" min="0" step="0.01" placeholder="0,00">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-order-deadline">Prazo de entrega</label>
+                    <input type="date" id="edit-order-deadline">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-order-notes">Observações</label>
+                    <textarea id="edit-order-notes" rows="3" maxlength="500"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" data-close-modal>Cancelar</button>
+                <button type="submit" class="btn-primary">
+                    <i data-lucide="check"></i>
+                    Salvar alterações
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Modal de detalhes do pedido -->
 <div class="modal-overlay" id="order-detail-modal" hidden>
     <div class="product-modal order-detail-modal" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">

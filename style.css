@@ -1120,12 +1120,43 @@ main {
     color: var(--text-muted);
 }
 
+.order-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin: -4px -6px -4px 0;
+}
+
+.order-edit {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.order-edit:hover {
+    background: var(--nav-hover);
+    color: var(--primary);
+}
+
+.order-edit svg {
+    width: 15px;
+    height: 15px;
+}
+
 .order-delete {
     display: grid;
     place-items: center;
     width: 28px;
     height: 28px;
-    margin: -4px -6px -4px 0;
+    margin: 0;
     padding: 0;
     border: none;
     border-radius: 6px;
