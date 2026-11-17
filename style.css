@@ -1867,3 +1867,7 @@ main h1 {
     font-size: 22px;
   }
 }
+/* Campo escondido (o display:flex do .form-group anularia o atributo hidden) */
+.form-group[hidden] {
+  display: none;
+}

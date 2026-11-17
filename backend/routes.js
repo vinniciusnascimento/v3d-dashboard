@@ -4,7 +4,8 @@ import multer from 'multer';
 import financeRouter, {
     garantirTabelaFinanceiro,
     sincronizarReceitas,
-    desvincularReceita
+    desvincularReceita,
+    normalizarPagamento
 } from './finance.js';
 
 const router = express.Router();
@@ -178,13 +179,21 @@ router.get("/orders", async (req, res) => {
 
 router.post("/orders", async (req, res) => {
     try {
-        const { customer, product, quantity, price, deadline, notes } = req.body;
+        const { customer, product, quantity, price, deadline, notes, payment_method } = req.body;
+
+        const pagamento = normalizarPagamento(payment_method);
+        if (pagamento === undefined) {
+            return res.status(400).json({ erro: "Forma de pagamento inválida" });
+        }
 
         if (!customer || !product) {
             return res.status(400).json({
                 erro: "Cliente e produto são obrigatórios"
             });
         }
+
+        // Garante a coluna payment_method antes do INSERT
+        await garantirTabelaFinanceiro();
 
         // Número sequencial e posição no fim da coluna "aguardando"
         const [[{ nextNumber }]] = await db.query(
@@ -196,8 +205,8 @@ router.post("/orders", async (req, res) => {
 
         const [result] = await db.query(
             `INSERT INTO orders
-                (number, customer, product, quantity, price, status, deadline, notes, position)
-             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?)`,
+                (number, customer, product, quantity, price, status, deadline, notes, position, payment_method)
+             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?)`,
             [
                 nextNumber,
                 customer,
@@ -206,7 +215,8 @@ router.post("/orders", async (req, res) => {
                 price ?? null,
                 deadline || null,
                 notes || null,
-                nextPosition
+                nextPosition,
+                pagamento
             ]
         );
 
@@ -272,7 +282,12 @@ router.put("/orders/:id", async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
-        const { customer, product, quantity, price, deadline, notes } = req.body;
+        const { customer, product, quantity, price, deadline, notes, payment_method } = req.body;
+
+        const pagamento = normalizarPagamento(payment_method);
+        if (pagamento === undefined) {
+            return res.status(400).json({ erro: "Forma de pagamento inválida" });
+        }
 
         if (!customer || !product) {
             return res.status(400).json({
@@ -288,9 +303,9 @@ router.put("/orders/:id", async (req, res) => {
         const [result] = await conn.query(
             `UPDATE orders
                 SET customer = ?, product = ?, quantity = ?, price = ?,
-                    deadline = ?, notes = ?
+                    deadline = ?, notes = ?, payment_method = ?
               WHERE id = ?`,
-            [customer, product, quantity || 1, price ?? null, deadline || null, notes || null, id]
+            [customer, product, quantity || 1, price ?? null, deadline || null, notes || null, pagamento, id]
         );
 
         if (result.affectedRows === 0) {

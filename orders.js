@@ -50,6 +50,20 @@ const ORDER_STATUSES = [
     { value: "concluido", label: "Concluído" },
 ];
 
+/* ---------- Forma de pagamento ---------- */
+
+const PAYMENT_METHODS = [
+    { value: "pix", label: "Pix" },
+    { value: "credito", label: "Cartão de crédito" },
+    { value: "debito", label: "Cartão de débito" },
+    { value: "dinheiro", label: "Dinheiro" },
+];
+
+function paymentLabel(value) {
+    const method = PAYMENT_METHODS.find((m) => m.value === value);
+    return method ? method.label : "";
+}
+
 /* ---------- Card ---------- */
 
 function createOrderCard(order, isNew = false) {
@@ -478,6 +492,7 @@ function initOrderModals() {
             price: price === "" ? null : Number(price),
             deadline: deadline || null,
             notes: document.getElementById("order-notes").value.trim(),
+            payment_method: document.getElementById("order-payment").value || null,
         };
 
         submitBtn.disabled = true;
@@ -551,6 +566,7 @@ function initOrderEditModal() {
     const price = document.getElementById("edit-order-price");
     const deadline = document.getElementById("edit-order-deadline");
     const notes = document.getElementById("edit-order-notes");
+    const payment = document.getElementById("edit-order-payment");
     const title = document.getElementById("order-edit-title");
 
     const closeModal = () => { modal.hidden = true; };
@@ -588,6 +604,7 @@ function initOrderEditModal() {
         // O input date precisa de "YYYY-MM-DD"
         deadline.value = order.deadline ? String(order.deadline).slice(0, 10) : "";
         notes.value = order.notes ?? "";
+        payment.value = order.payment_method ?? "";
 
         modal.hidden = false;
         customer.focus();
@@ -608,6 +625,7 @@ function initOrderEditModal() {
             price: price.value === "" ? null : Number(price.value),
             deadline: deadline.value || null,
             notes: notes.value.trim(),
+            payment_method: payment.value || null,
         };
 
         submitBtn.disabled = true;
@@ -664,6 +682,7 @@ function openOrderDetail(id) {
         ? deadline.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
         : "Sem prazo");
     setText("order-detail-stage", statusLabel);
+    setText("order-detail-payment", paymentLabel(order.payment_method) || "Não informada");
     setText("order-detail-status", statusLabel);
 
     const notes = document.getElementById("order-detail-notes");

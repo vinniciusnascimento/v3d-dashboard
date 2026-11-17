@@ -5,6 +5,14 @@ const productsLink = document.querySelector(".linkProducts")
 const ordersLink = document.querySelector(".linkOrders")
 const financeLink = document.querySelector(".linkFinance")
 
+// Opções de forma de pagamento (opcional: a primeira opção é vazia)
+const paymentOptionsHtml = `<option value="">Não informada</option>` + [
+    ["pix", "Pix"],
+    ["credito", "Cartão de crédito"],
+    ["debito", "Cartão de débito"],
+    ["dinheiro", "Dinheiro"],
+].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+
 function removeClasses() {
     allLinks.forEach(link => {
         link.classList.remove("active")
@@ -415,9 +423,16 @@ function ordersPage() {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="order-deadline">Prazo de entrega</label>
-                    <input type="date" id="order-deadline">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="order-deadline">Prazo de entrega</label>
+                        <input type="date" id="order-deadline">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="order-payment">Forma de pagamento</label>
+                        <select id="order-payment">${paymentOptionsHtml}</select>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -501,9 +516,16 @@ function ordersPage() {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="edit-order-deadline">Prazo de entrega</label>
-                    <input type="date" id="edit-order-deadline">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-order-deadline">Prazo de entrega</label>
+                        <input type="date" id="edit-order-deadline">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-order-payment">Forma de pagamento</label>
+                        <select id="edit-order-payment">${paymentOptionsHtml}</select>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -570,6 +592,10 @@ function ordersPage() {
                 <div class="order-detail-item">
                     <dt>Etapa</dt>
                     <dd id="order-detail-stage"></dd>
+                </div>
+                <div class="order-detail-item">
+                    <dt>Forma de pagamento</dt>
+                    <dd id="order-detail-payment"></dd>
                 </div>
             </dl>
 
@@ -717,6 +743,11 @@ function financePage() {
                         <label for="finance-date">Data *</label>
                         <input type="date" id="finance-date" required>
                     </div>
+                </div>
+
+                <div class="form-group" id="finance-payment-group" hidden>
+                    <label for="finance-payment">Forma de pagamento</label>
+                    <select id="finance-payment">${paymentOptionsHtml}</select>
                 </div>
             </div>
 

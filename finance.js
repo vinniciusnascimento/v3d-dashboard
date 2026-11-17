@@ -140,6 +140,7 @@ function renderFinanceList() {
                             <th>Data</th>
                             <th>Descrição</th>
                             <th>Categoria</th>
+                            <th>Pagamento</th>
                             <th class="finance-th-amount">Valor</th>
                             <th></th>
                         </tr>
@@ -183,6 +184,7 @@ function createFinanceRow(entry) {
             : ""}
             </td>
             <td>${escapeHtml(entry.category)}</td>
+            <td>${isIncome && entry.payment_method ? escapeHtml(paymentLabel(entry.payment_method)) : "—"}</td>
             <td class="finance-amount ${isIncome ? "income" : "expense"}">
                 ${isIncome ? "+" : "−"} ${formatMoney(entry.amount)}
             </td>
@@ -255,6 +257,15 @@ function initFinanceModals() {
     const amountInput = document.getElementById("finance-amount");
     const dateInput = document.getElementById("finance-date");
     const categoryInput = document.getElementById("finance-category");
+    const paymentInput = document.getElementById("finance-payment");
+    const paymentGroup = document.getElementById("finance-payment-group");
+
+    // Forma de pagamento só aparece para receitas
+    function syncPayment() {
+        const isIncome = typeInput.value === "receita";
+        paymentGroup.hidden = !isIncome;
+        if (!isIncome) paymentInput.value = "";
+    }
 
     const closeModal = (target) => { target.hidden = true; };
 
@@ -279,6 +290,7 @@ function initFinanceModals() {
             : "";
 
         fillCategories(typeInput.value, keep);
+        syncPayment();
     });
 
     [modal, deleteModal].forEach((target) => {
@@ -309,6 +321,7 @@ function initFinanceModals() {
         typeInput.value = "despesa";
         dateInput.value = localISODate(new Date());
         fillCategories("despesa");
+        syncPayment();
 
         modal.hidden = false;
         descriptionInput.focus();
@@ -331,6 +344,8 @@ function initFinanceModals() {
             amountInput.value = entry.amount;
             dateInput.value = entry.entry_date;
             fillCategories(entry.type, entry.category);
+            paymentInput.value = entry.payment_method ?? "";
+            syncPayment();
 
             modal.hidden = false;
             descriptionInput.focus();
@@ -354,6 +369,7 @@ function initFinanceModals() {
             amount: Number(amountInput.value),
             entry_date: dateInput.value,
             category: categoryInput.value,
+            payment_method: typeInput.value === "receita" ? (paymentInput.value || null) : null,
         };
 
         submitBtn.disabled = true;

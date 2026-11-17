@@ -16,28 +16,51 @@ const router = express.Router();
 const TIPOS = ['receita', 'despesa'];
 const DATA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+// Forma de pagamento é opcional: vazio = null, valor fora da lista = undefined (inválido)
+export const PAGAMENTOS = ['pix', 'credito', 'debito', 'dinheiro'];
+
+export function normalizarPagamento(valor) {
+    if (valor === undefined || valor === null || valor === '') return null;
+    return PAGAMENTOS.includes(valor) ? valor : undefined;
+}
+
 /* ---------- Tabela ---------- */
 
 // O projeto não tem script de migração, então a tabela se cria sozinha
 // na primeira vez que o Financeiro é usado (precisa de permissão CREATE).
 let tabelaPronta = null;
 
+// Adiciona a coluna se ainda não existir (bancos que já tinham as tabelas)
+async function garantirColuna(tabela, coluna, definicao) {
+    try {
+        await db.query(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+    } catch (erro) {
+        if (erro.code !== 'ER_DUP_FIELDNAME') throw erro;
+    }
+}
+
 export function garantirTabelaFinanceiro() {
     if (!tabelaPronta) {
-        tabelaPronta = db.query(`
-            CREATE TABLE IF NOT EXISTS finance_entries (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                type ENUM('receita', 'despesa') NOT NULL,
-                description VARCHAR(255) NOT NULL,
-                category VARCHAR(60) NOT NULL DEFAULT 'Outros',
-                amount DECIMAL(10, 2) NOT NULL,
-                entry_date DATE NOT NULL,
-                order_id INT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_finance_order (order_id),
-                KEY idx_finance_date (entry_date)
-            ) DEFAULT CHARSET = utf8mb4
-        `).catch((erro) => {
+        tabelaPronta = (async () => {
+            await db.query(`
+                CREATE TABLE IF NOT EXISTS finance_entries (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    type ENUM('receita', 'despesa') NOT NULL,
+                    description VARCHAR(255) NOT NULL,
+                    category VARCHAR(60) NOT NULL DEFAULT 'Outros',
+                    amount DECIMAL(10, 2) NOT NULL,
+                    entry_date DATE NOT NULL,
+                    order_id INT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_finance_order (order_id),
+                    KEY idx_finance_date (entry_date)
+                ) DEFAULT CHARSET = utf8mb4
+            `);
+
+            // Forma de pagamento (opcional) nos lançamentos e nos pedidos
+            await garantirColuna('finance_entries', 'payment_method', 'VARCHAR(20) NULL');
+            await garantirColuna('orders', 'payment_method', 'VARCHAR(20) NULL');
+        })().catch((erro) => {
             tabelaPronta = null; // tenta de novo na próxima chamada
             throw erro;
         });
@@ -82,7 +105,7 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
     if (!ids.length) return;
 
     const [pedidos] = await conn.query(
-        'SELECT id, number, customer, product, quantity, price, status FROM orders WHERE id IN (?)',
+        'SELECT id, number, customer, product, quantity, price, status, payment_method FROM orders WHERE id IN (?)',
         [ids]
     );
 
@@ -98,14 +121,14 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
         }
 
         const reescrever = atualizar
-            ? 'amount = VALUES(amount), description = VALUES(description)'
+            ? 'amount = VALUES(amount), description = VALUES(description), payment_method = VALUES(payment_method)'
             : 'id = id';
 
         await conn.query(
-            `INSERT INTO finance_entries (type, description, category, amount, entry_date, order_id)
-             VALUES ('receita', ?, 'Pedidos', ?, ?, ?)
+            `INSERT INTO finance_entries (type, description, category, amount, entry_date, order_id, payment_method)
+             VALUES ('receita', ?, 'Pedidos', ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE ${reescrever}`,
-            [descricaoDoPedido(pedido), arredondar(valor), hoje, pedido.id]
+            [descricaoDoPedido(pedido), arredondar(valor), hoje, pedido.id, pedido.payment_method || null]
         );
     }
 }
@@ -136,7 +159,13 @@ function lerLancamento(body = {}) {
     const entry_date = body.entry_date;
     if (!dataValida(entry_date)) return { erro: 'Data inválida' };
 
-    return { valores: { type, description, category, amount, entry_date } };
+    const pagamento = normalizarPagamento(body.payment_method);
+    if (pagamento === undefined) return { erro: 'Forma de pagamento inválida' };
+
+    // Forma de pagamento só faz sentido para receitas
+    const payment_method = type === 'receita' ? pagamento : null;
+
+    return { valores: { type, description, category, amount, entry_date, payment_method } };
 }
 
 /* ---------- Rotas (montadas em /api/finance) ---------- */
@@ -165,7 +194,7 @@ router.get('/', async (req, res) => {
         const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
 
         const [rows] = await db.query(
-            `SELECT id, type, description, category, amount,
+            `SELECT id, type, description, category, amount, payment_method,
                     DATE_FORMAT(entry_date, '%Y-%m-%d') AS entry_date, order_id
                FROM finance_entries
                ${where}
@@ -203,9 +232,9 @@ router.post('/', async (req, res) => {
         await garantirTabelaFinanceiro();
 
         const [result] = await db.query(
-            `INSERT INTO finance_entries (type, description, category, amount, entry_date)
-             VALUES (?, ?, ?, ?, ?)`,
-            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date]
+            `INSERT INTO finance_entries (type, description, category, amount, entry_date, payment_method)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method]
         );
 
         res.status(201).json({ id: result.insertId });
@@ -237,9 +266,9 @@ router.put('/:id', async (req, res) => {
 
         await db.query(
             `UPDATE finance_entries
-                SET type = ?, description = ?, category = ?, amount = ?, entry_date = ?
+                SET type = ?, description = ?, category = ?, amount = ?, entry_date = ?, payment_method = ?
               WHERE id = ?`,
-            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, req.params.id]
+            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method, req.params.id]
         );
 
         res.json({ message: 'Lançamento atualizado' });
