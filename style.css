@@ -1874,7 +1874,67 @@ main h1 {
 }
 /* Controle de parcelas */
 .order-installments-btn { width: 100%; margin: 10px 0; cursor: pointer; }
-.installment-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
-.installment-row label { display:flex; gap:8px; align-items:center; }
-.installment-row input[type="date"] { padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); max-width:155px; }
-@media(max-width:520px) { .installment-row { flex-wrap:wrap; } }
+
+/* Modal "Gerenciar parcelas" */
+#installments-modal .product-modal { max-width: 520px; }
+#installments-modal .form-body { gap: 12px; }
+
+.inst-summary {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  margin-bottom: 4px;
+}
+.inst-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.inst-stats div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.inst-stats span { font-size: 12px; color: var(--text-muted); }
+.inst-stats strong { font-family: "Outfit", sans-serif; font-size: 18px; }
+.inst-stats strong.is-paid { color: var(--primary); }
+.inst-progress { height: 8px; margin-top: 14px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.inst-progress div { height: 100%; border-radius: 999px; background: var(--primary); transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+.installment-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid #D97706;
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 0.2s, background 0.2s;
+}
+.installment-row.is-paid { border-color: var(--primary); background: var(--primary-light); }
+.inst-check { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.inst-check input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+.inst-info { display: flex; flex-direction: column; gap: 2px; }
+.inst-info strong { font-size: 14px; }
+.inst-info small { font-size: 13px; color: var(--text-muted); }
+.inst-date { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.inst-date span { font-size: 11px; color: var(--text-muted); }
+.installment-row input[type="date"] { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); max-width: 150px; font-family: inherit; }
+@media (max-width: 520px) {
+  .inst-stats { grid-template-columns: 1fr 1fr; }
+  .installment-row { flex-wrap: wrap; }
+  .inst-date { align-items: flex-start; width: 100%; }
+  .installment-row input[type="date"] { max-width: none; width: 100%; }
+}
+
+/* Selo de situação da parcela (verde = paga, laranja = pendente, azul = parcial) */
+.pay-badge {
+  --pay-color: #D97706;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--pay-color);
+  color: var(--pay-color);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pay-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pay-color); }
+.pay-badge[data-state="paid"]    { --pay-color: var(--primary); }
+.pay-badge[data-state="partial"] { --pay-color: #2563EB; }
+.pay-badge[data-state="pending"] { --pay-color: #D97706; }
+.inst-check .pay-badge { margin-left: 4px; }

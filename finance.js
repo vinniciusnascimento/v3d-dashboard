@@ -432,17 +432,40 @@ function initFinanceModals() {
    (chamada no fim de financePage(), em pages.js)
    ============================================================ */
 let financeInstallmentOrders = [];
-async function loadFinanceInstallmentOrders() {
+
+// Situação das parcelas: pago (todas), parcial (algumas) ou pendente (nenhuma)
+function installmentBadge(paid, total) {
+    const state = paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'pending';
+    const label = state === 'paid' ? 'Pago' : state === 'partial' ? `Parcial · ${paid}/${total}` : 'Pendente';
+    return `<span class="pay-badge" data-state="${state}">${label}</span>`;
+}
+
+async function loadFinanceInstallmentOrders(quiet = false) {
     const container = document.getElementById('finance-order-installments');
-    container.textContent = 'Carregando pedidos...';
+    if (!quiet) container.textContent = 'Carregando pedidos...';
     try {
         const response = await fetch(ORDERS_API_URL);
         if (!response.ok) throw new Error('Não foi possível carregar os pedidos parcelados.');
         const orders = await response.json();
         if (!container.isConnected) return;
         financeInstallmentOrders = orders.filter(order => order.payment_method === 'credito');
-        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Etapa</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
-            '<tr><td>' + formatOrderNumber(order.number) + '</td><td>' + escapeHtml(order.customer) + '</td><td>' + escapeHtml((ORDER_STATUSES.find(st => st.value === order.status) || {}).label || order.status) + '</td><td>' + formatMoney(order.price) + '</td><td>' + (Number(order.installments) || 1) + 'x</td><td><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
+
+        // Quantas parcelas de cada pedido já foram pagas
+        await Promise.all(financeInstallmentOrders.map(async (order) => {
+            order.installmentsTotal = Number(order.installments) || 1;
+            order.installmentsPaid = 0;
+            try {
+                const r = await fetch(`${ORDERS_API_URL}/${order.id}/installments`);
+                if (!r.ok) return;
+                const data = await r.json();
+                order.installmentsTotal = data.installments.length;
+                order.installmentsPaid = data.installments.filter(p => p.paid_at).length;
+            } catch (_) { /* mantém 0 pagas */ }
+        }));
+        if (!container.isConnected) return;
+
+        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
+            '<tr><td>' + formatOrderNumber(order.number) + '</td><td>' + escapeHtml(order.customer) + '</td><td>' + installmentBadge(order.installmentsPaid, order.installmentsTotal) + '</td><td>' + formatMoney(order.price) + '</td><td>' + order.installmentsTotal + 'x</td><td><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
         ).join('') + '</tbody></table></div>' : '<p class="products-empty">Nenhum pedido no crédito encontrado.</p>';
     } catch (error) {
         if (container.isConnected) container.textContent = error.message;
@@ -461,6 +484,7 @@ function initFinanceInstallments() {
         const order = financeInstallmentOrders.find(o => String(o.id) === String(id));
         let saving = false;
         modal.querySelector('h2').textContent = `Parcelas do pedido ${formatOrderNumber(order.number)}`;
+        modal.querySelector('.modal-header p').textContent = `${order.customer} · ${order.product}`;
         modal.hidden = false;
         const refresh = async () => {
             list.textContent = 'Carregando parcelas...';
@@ -470,10 +494,27 @@ function initFinanceInstallments() {
                 if (!response.ok) throw new Error(data.erro || 'Erro ao carregar');
                 const paid = data.installments.filter(p => p.paid_at);
                 const received = paid.reduce((v,p) => v + p.amount, 0);
-                list.innerHTML = `<p><strong>${paid.length}/${data.installments.length} pagas</strong> — Recebido: ${formatPrice(received)} — Pendente: ${formatPrice(Math.max(0, Number(order.price || 0)-received))}</p>` +
-                    data.installments.map(p => `<div class="installment-row">
-                        <label><input type="checkbox" data-number="${p.number}" ${p.paid_at ? 'checked' : ''}> ${p.number}ª parcela — ${formatPrice(p.amount)}</label>
-                        <input type="date" data-date="${p.number}" value="${p.paid_at || localInstallmentDate()}" aria-label="Data da parcela ${p.number}">
+                const total = data.installments.length;
+                const pending = Math.max(0, Number(order.price || 0) - received);
+                const pct = total ? Math.round((paid.length / total) * 100) : 0;
+                list.innerHTML = `<div class="inst-summary">
+                        <div class="inst-stats">
+                            <div><span>Recebido</span><strong class="is-paid">${formatPrice(received)}</strong></div>
+                            <div><span>Pendente</span><strong>${formatPrice(pending)}</strong></div>
+                            <div><span>Parcelas pagas</span><strong>${paid.length}/${total}</strong></div>
+                        </div>
+                        <div class="inst-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
+                    </div>` +
+                    data.installments.map(p => `<div class="installment-row${p.paid_at ? ' is-paid' : ''}">
+                        <label class="inst-check">
+                            <input type="checkbox" data-number="${p.number}" ${p.paid_at ? 'checked' : ''}>
+                            <span class="inst-info"><strong>${p.number}ª parcela</strong><small>${formatPrice(p.amount)}</small></span>
+                            <span class="pay-badge" data-state="${p.paid_at ? 'paid' : 'pending'}">${p.paid_at ? 'Paga' : 'Pendente'}</span>
+                        </label>
+                        <div class="inst-date">
+                            <span>${p.paid_at ? 'Pago em' : 'Data do pagamento'}</span>
+                            <input type="date" data-date="${p.number}" value="${p.paid_at || localInstallmentDate()}" aria-label="Data da parcela ${p.number}">
+                        </div>
                     </div>`).join('');
                 lucide.createIcons();
             } catch (error) { list.textContent = error.message; }
@@ -496,6 +537,7 @@ function initFinanceInstallments() {
             } catch (error) { alert(error.message); }
             await refresh();
             await loadFinance();
+            loadFinanceInstallmentOrders(true);
             saving = false;
         };
         modal.querySelector('[data-close-installments]').onclick = () => { modal.hidden = true; };

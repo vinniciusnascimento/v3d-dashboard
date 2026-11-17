@@ -716,7 +716,7 @@ function financePage() {
 </section>
 <div class="modal-overlay" id="installments-modal" hidden>
   <div class="product-modal" role="dialog" aria-modal="true" aria-label="Gerenciar parcelas">
-    <div class="modal-header"><h2>Gerenciar parcelas</h2><button type="button" class="icon-button" data-close-installments aria-label="Fechar"><i data-lucide="x"></i></button></div>
+    <div class="modal-header"><div><h2>Gerenciar parcelas</h2><p></p></div><button type="button" class="icon-button" data-close-installments aria-label="Fechar"><i data-lucide="x"></i></button></div>
     <div class="form-body" id="installments-list"></div>
   </div>
 </div>
