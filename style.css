@@ -125,7 +125,7 @@ body {
   outline-offset: 2px;
 }
 
-#theme-toggle {
+:is(#theme-toggle, #logout-button) {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -147,12 +147,12 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
-#theme-toggle:hover {
+:is(#theme-toggle, #logout-button):hover {
   background-color: var(--nav-hover);
   color: var(--primary);
 }
 
-#theme-toggle svg {
+:is(#theme-toggle, #logout-button) svg {
   width: 20px;
   height: 20px;
 }
@@ -1697,8 +1697,8 @@ main h1 {
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
   }
 
-  /* Empurra o botão de tema para o fim da gaveta */
-  .sidebar #theme-toggle {
+  /* Empurra os botões para o fim da gaveta */
+  .sidebar-actions {
     margin-top: auto;
   }
 
@@ -2066,3 +2066,55 @@ main h1 {
 .order-item-remove {background:transparent;border:0;color:#dc2626;cursor:pointer;padding:6px}
 .order-product span {line-height:1.6}
 @media(max-width:620px){.order-add-line {grid-template-columns:72px minmax(0,1fr)}.order-add-line button {grid-column:1/-1}.order-item-row{grid-template-columns:minmax(0,1fr) 65px 90px 32px}.order-item-name{grid-column:1/-1}.order-item-subtotal{grid-column:1/4;text-align:left}.order-item-remove{grid-column:4;grid-row:2}}
+
+/* Acesso ao painel */
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(100%, 400px);
+  padding: clamp(24px, 6vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background-color: var(--surface);
+}
+
+.login-logo {
+  display: block;
+  width: 100px;
+  margin: 0 auto 24px;
+}
+
+.login-card h1 {
+  margin-bottom: 24px;
+  text-align: center;
+  font: 650 26px "Outfit", sans-serif;
+}
+
+.login-card form {
+  display: grid;
+  gap: 16px;
+}
+
+.login-card .btn-primary {
+  justify-content: center;
+}
+
+.auth-status {
+  color: var(--text);
+  font-size: 14px;
+}
+
+#logout-status {
+  padding: 4px 16px;
+}
+
+#login-form button:disabled,
+#logout-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}

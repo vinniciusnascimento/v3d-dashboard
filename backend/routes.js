@@ -83,7 +83,6 @@ router.get('/produtos/:id/imagem', async (req, res) => {
         if (!img) return res.status(404).end();
 
         res.set('Content-Type', img.mime);
-        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
         res.send(img.data);
     } catch (erro) {
         console.error(erro);

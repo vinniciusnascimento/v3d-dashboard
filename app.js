@@ -393,7 +393,7 @@ function initFilters() {
 
 async function loadProducts() {
     try {
-        const resposta = await fetch(API_URL);
+        const resposta = await apiFetch(API_URL);
         if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
 
         const dados = await resposta.json();
@@ -436,7 +436,7 @@ function initProductForm() {
         if (imageFile) formData.append("image", imageFile);
 
         try {
-            const resposta = await fetch(API_URL, {
+            const resposta = await apiFetch(API_URL, {
                 method: "POST",
                 body: formData, // sem Content-Type: o navegador define sozinho
             });
@@ -550,7 +550,7 @@ function initActionModals() {
         btnSave.disabled = true;
 
         try {
-            const response = await fetch(`${API_URL}/${id}`, {
+            const response = await apiFetch(`${API_URL}/${id}`, {
                 method: "PUT",
                 body: formData,
             });
@@ -576,7 +576,7 @@ function initActionModals() {
         btnDelete.disabled = true;
 
         try {
-            const response = await fetch(`${API_URL}/${id}`, {
+            const response = await apiFetch(`${API_URL}/${id}`, {
                 method: "DELETE",
             });
 
@@ -625,4 +625,4 @@ function initProductsPage() {
 }
 
 // Página inicial
-productsPage();
+if (!redirectingToLocalServer) productsPage();

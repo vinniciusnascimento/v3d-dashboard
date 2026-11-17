@@ -202,7 +202,7 @@ async function loadFinance() {
     const query = new URLSearchParams(period).toString();
 
     try {
-        const response = await fetch(`${FINANCE_API_URL}${query ? `?${query}` : ""}`);
+        const response = await apiFetch(`${FINANCE_API_URL}${query ? `?${query}` : ""}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
@@ -383,7 +383,7 @@ function initFinanceModals() {
         submitBtn.disabled = true;
 
         try {
-            const response = await fetch(id ? `${FINANCE_API_URL}/${id}` : FINANCE_API_URL, {
+            const response = await apiFetch(id ? `${FINANCE_API_URL}/${id}` : FINANCE_API_URL, {
                 method: id ? "PUT" : "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -410,7 +410,7 @@ function initFinanceModals() {
         confirmDelete.disabled = true;
 
         try {
-            const response = await fetch(`${FINANCE_API_URL}/${id}`, { method: "DELETE" });
+            const response = await apiFetch(`${FINANCE_API_URL}/${id}`, { method: "DELETE" });
 
             if (!response.ok) {
                 throw new Error(await readFinanceError(response, `HTTP ${response.status}`));
@@ -444,7 +444,7 @@ async function loadFinanceInstallmentOrders(quiet = false) {
     const container = document.getElementById('finance-order-installments');
     if (!quiet) container.textContent = 'Carregando pedidos...';
     try {
-        const response = await fetch(ORDERS_API_URL);
+        const response = await apiFetch(ORDERS_API_URL);
         if (!response.ok) throw new Error('Não foi possível carregar os pedidos parcelados.');
         const orders = await response.json();
         if (!container.isConnected) return;
@@ -455,7 +455,7 @@ async function loadFinanceInstallmentOrders(quiet = false) {
             order.installmentsTotal = Number(order.installments) || 1;
             order.installmentsPaid = 0;
             try {
-                const r = await fetch(`${ORDERS_API_URL}/${order.id}/installments`);
+                const r = await apiFetch(`${ORDERS_API_URL}/${order.id}/installments`);
                 if (!r.ok) return;
                 const data = await r.json();
                 order.installmentsTotal = data.installments.length;
@@ -489,7 +489,7 @@ function initFinanceInstallments() {
         const refresh = async () => {
             list.textContent = 'Carregando parcelas...';
             try {
-                const response = await fetch(`${ORDERS_API_URL}/${id}/installments`);
+                const response = await apiFetch(`${ORDERS_API_URL}/${id}/installments`);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.erro || 'Erro ao carregar');
                 const paid = data.installments.filter(p => p.paid_at);
@@ -529,7 +529,7 @@ function initFinanceInstallments() {
             saving = true;
             list.querySelectorAll('input').forEach(el => { el.disabled = true; });
             try {
-                const response = await fetch(`${ORDERS_API_URL}/${id}/installments/${number}`, {
+                const response = await apiFetch(`${ORDERS_API_URL}/${id}/installments/${number}`, {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ paid: checked, paid_at: date })
                 });

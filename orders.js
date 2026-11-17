@@ -170,7 +170,7 @@ function renderOrders(newId = null) {
 
 async function loadOrders(newId = null) {
     try {
-        const response = await fetch(ORDERS_API_URL);
+        const response = await apiFetch(ORDERS_API_URL);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
@@ -306,7 +306,7 @@ async function loadProductSuggestions() {
         let produtos = typeof allProducts !== "undefined" ? allProducts : [];
 
         if (!produtos.length) {
-            const response = await fetch(API_URL);
+            const response = await apiFetch(API_URL);
             if (!response.ok) return;
 
             const data = await response.json();
@@ -349,7 +349,7 @@ async function persistColumn(list) {
     });
 
     try {
-        const response = await fetch(`${ORDERS_API_URL}/reordenar`, {
+        const response = await apiFetch(`${ORDERS_API_URL}/reordenar`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status, ids }),
@@ -382,7 +382,7 @@ async function moveOrderToStatus(id, newStatus) {
     renderOrders();
 
     try {
-        const response = await fetch(`${ORDERS_API_URL}/reordenar`, {
+        const response = await apiFetch(`${ORDERS_API_URL}/reordenar`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: newStatus, ids }),
@@ -1138,7 +1138,7 @@ function initOrderModals() {
         submitBtn.disabled = true;
 
         try {
-            const response = await fetch(ORDERS_API_URL, {
+            const response = await apiFetch(ORDERS_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -1181,7 +1181,7 @@ function initOrderModals() {
         confirmDelete.disabled = true;
 
         try {
-            const response = await fetch(`${ORDERS_API_URL}/${id}`, { method: "DELETE" });
+            const response = await apiFetch(`${ORDERS_API_URL}/${id}`, { method: "DELETE" });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             allOrders = allOrders.filter((o) => String(o.id) !== String(id));
@@ -1281,7 +1281,7 @@ function initOrderEditModal() {
         submitBtn.disabled = true;
 
         try {
-            const response = await fetch(`${ORDERS_API_URL}/${id}`, {
+            const response = await apiFetch(`${ORDERS_API_URL}/${id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
