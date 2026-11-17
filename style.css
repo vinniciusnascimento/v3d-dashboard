@@ -1431,6 +1431,13 @@ main h1 {
   color: #FCA5A5;
 }
 
+/* Dígitos de largura fixa: o valor não "treme" enquanto o número conta */
+#finance-income,
+#finance-expense,
+#finance-profit {
+  font-variant-numeric: tabular-nums;
+}
+
 .finance-table {
   min-width: 640px;
 }

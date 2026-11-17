@@ -65,10 +65,47 @@ function getFinancePeriod(key) {
 
 /* ---------- Resumo ---------- */
 
+const financeAnimations = new WeakMap();
+
+function animateFinanceMoney(elementId, target) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const previous = financeAnimations.get(element);
+    if (previous) cancelAnimationFrame(previous.frame);
+
+    const from = previous?.value ?? 0;
+    const value = Number(target) || 0;
+    const state = { value: from, frame: null };
+    financeAnimations.set(element, state);
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || from === value) {
+        state.value = value;
+        element.textContent = formatMoney(value);
+        return;
+    }
+
+    const start = performance.now();
+    const duration = 1000;
+
+    function frame(now) {
+        if (!element.isConnected) return;
+
+        const progress = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        state.value = progress === 1 ? value : from + (value - from) * eased;
+        element.textContent = formatMoney(state.value);
+
+        if (progress < 1) state.frame = requestAnimationFrame(frame);
+    }
+
+    state.frame = requestAnimationFrame(frame);
+}
+
 function renderFinanceSummary(summary) {
-    document.getElementById("finance-income").textContent = formatMoney(summary.receitas);
-    document.getElementById("finance-expense").textContent = formatMoney(summary.despesas);
-    document.getElementById("finance-profit").textContent = formatMoney(summary.lucro);
+    animateFinanceMoney("finance-income", summary.receitas);
+    animateFinanceMoney("finance-expense", summary.despesas);
+    animateFinanceMoney("finance-profit", summary.lucro);
 
     document.getElementById("finance-profit-card")
         .classList.toggle("is-negative", summary.lucro < 0);
