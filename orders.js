@@ -61,9 +61,14 @@ function createOrderCard(order, isNew = false) {
         <article class="order-card${isNew ? " is-new" : ""}" draggable="true" data-id="${order.id}">
             <div class="order-card-top">
                 <span class="order-number">${formatOrderNumber(order.number)}</span>
-                <button type="button" class="order-delete" data-id="${order.id}" aria-label="Excluir pedido">
-                    <i data-lucide="trash-2"></i>
-                </button>
+                <div class="order-card-actions">
+                    <button type="button" class="order-edit" data-id="${order.id}" aria-label="Editar pedido" title="Editar pedido">
+                        <i data-lucide="pencil"></i>
+                    </button>
+                    <button type="button" class="order-delete" data-id="${order.id}" aria-label="Excluir pedido" title="Excluir pedido">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
             </div>
 
             <h3 class="order-customer">${escapeHtml(order.customer)}</h3>
@@ -437,6 +442,107 @@ function initOrderModals() {
     });
 }
 
+/* ---------- Modal de edição do pedido ---------- */
+
+let editOrderEscHandler = null;
+
+function initOrderEditModal() {
+    const modal = document.getElementById("order-edit-modal");
+    const form = document.getElementById("order-edit-form");
+    const board = document.getElementById("orders-board");
+    if (!modal || !form || !board) return;
+
+    const customer = document.getElementById("edit-order-customer");
+    const product = document.getElementById("edit-order-product");
+    const quantity = document.getElementById("edit-order-quantity");
+    const price = document.getElementById("edit-order-price");
+    const deadline = document.getElementById("edit-order-deadline");
+    const notes = document.getElementById("edit-order-notes");
+    const title = document.getElementById("order-edit-title");
+
+    const closeModal = () => { modal.hidden = true; };
+
+    modal.querySelectorAll("[data-close-modal]").forEach((btn) => {
+        btn.addEventListener("click", closeModal);
+    });
+
+    modal.addEventListener("click", (event) => {
+        if (event.target === modal) closeModal();
+    });
+
+    if (editOrderEscHandler) document.removeEventListener("keydown", editOrderEscHandler);
+
+    editOrderEscHandler = (event) => {
+        if (event.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", editOrderEscHandler);
+
+    // Clique no lápis: abre o modal com os dados atuais já preenchidos
+    board.addEventListener("click", (event) => {
+        const editBtn = event.target.closest(".order-edit");
+        if (!editBtn) return;
+
+        const order = allOrders.find((o) => String(o.id) === String(editBtn.dataset.id));
+        if (!order) return;
+
+        modal.dataset.orderId = order.id;
+        title.textContent = `Editar pedido ${formatOrderNumber(order.number)}`;
+
+        customer.value = order.customer ?? "";
+        product.value = order.product ?? "";
+        quantity.value = Number(order.quantity) || 1;
+        price.value = order.price ?? "";
+        // O input date precisa de "YYYY-MM-DD"
+        deadline.value = order.deadline ? String(order.deadline).slice(0, 10) : "";
+        notes.value = order.notes ?? "";
+
+        modal.hidden = false;
+        customer.focus();
+    });
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const id = modal.dataset.orderId;
+        if (!id) return;
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+
+        const body = {
+            customer: customer.value.trim(),
+            product: product.value.trim(),
+            quantity: Number(quantity.value) || 1,
+            price: price.value === "" ? null : Number(price.value),
+            deadline: deadline.value || null,
+            notes: notes.value.trim(),
+        };
+
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch(`${ORDERS_API_URL}/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            // Atualiza a cópia local (status e posição continuam os mesmos)
+            const order = allOrders.find((o) => String(o.id) === String(id));
+            if (order) Object.assign(order, body);
+
+            renderOrders();
+            closeModal();
+        } catch (erro) {
+            console.error("Erro ao atualizar pedido:", erro);
+            alert("Não foi possível salvar as alterações do pedido.");
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+}
+
 /* ---------- Modal de detalhes do pedido ---------- */
 
 let detailEscHandler = null;
@@ -510,7 +616,7 @@ function initOrderDetailModal() {
 
     // Clique no card (ignora lixeira e seletor "Mover para")
     board.addEventListener("click", (event) => {
-        if (event.target.closest(".order-delete, .order-move")) return;
+        if (event.target.closest(".order-delete, .order-edit, .order-move")) return;
 
         const card = event.target.closest(".order-card");
         if (!card) return;
@@ -527,6 +633,7 @@ function initOrdersPage() {
     initOrdersDragAndDrop();
     initOrderStatusSelect();
     initOrderModals();
+    initOrderEditModal();
     initOrderDetailModal();
 
     lucide.createIcons();
