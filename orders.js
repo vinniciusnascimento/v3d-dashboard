@@ -492,7 +492,7 @@ async function exportOrderQuotePDF(order) {
     try {
         const { PDFDocument, StandardFonts, rgb } = PDFLib;
         const pdf = await PDFDocument.create();
-        const page = pdf.addPage([595.28, 841.89]); // A4
+        let page = pdf.addPage([595.28, 841.89]); // A4
         const font = await pdf.embedFont(StandardFonts.Helvetica);
         const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
@@ -647,14 +647,17 @@ async function exportOrderQuotePDF(order) {
                 (item) => item.value === order.status
             )?.label || "Aguardando";
 
-        const qty = Math.max(1, Number(order.quantity) || 1);
-
-        const total =
-            order.price == null || order.price === ""
-                ? null
-                : Number(order.price);
-
-        const unit = total == null ? null : total / qty;
+        // Usa os itens da API; pedidos antigos continuam funcionando pelo fallback.
+        const items = orderItemsOf(order).map(item => ({
+            name: item.name || item.product_name || item.product || "Produto",
+            quantity: Math.max(1, Number(item.quantity) || 1),
+            unit_price: item.unit_price == null || item.unit_price === ""
+                ? null : Number(item.unit_price)
+        }));
+        const computedTotal = items.every(item => item.unit_price !== null)
+            ? items.reduce((sum, item) => sum + Math.round(item.unit_price * 100) * item.quantity, 0) / 100
+            : null;
+        const total = computedTotal ?? (order.price == null || order.price === "" ? null : Number(order.price));
 
         const number =
             order.number != null
@@ -756,9 +759,7 @@ async function exportOrderQuotePDF(order) {
             bold: true
         });
 
-        const tableTop = y + 24;
         const tableW = W - M * 2;
-
         const cols = {
             n: M + 14,
             desc: M + 48,
@@ -766,69 +767,62 @@ async function exportOrderQuotePDF(order) {
             unit: M + tableW - 105,
             total: M + tableW - 14
         };
+        const th = { size: 7.5, bold: true, color: lime };
+        const rowHeight = 38;
+        let tableTop = y + 24;
+        let rowTop = tableTop + 26;
 
-        rect(M, tableTop, tableW, 26, flagGreen);
-
-        const th = {
-            size: 7.5,
-            bold: true,
-            color: lime
+        const drawTableHeading = () => {
+            rect(M, tableTop, tableW, 26, flagGreen);
+            text("ITEM", cols.n, tableTop + 9, th);
+            text("DESCRIÇÃO", cols.desc, tableTop + 9, th);
+            text("QTD.", cols.qty, tableTop + 9, { ...th, align: "center" });
+            text("VALOR UNIT.", cols.unit, tableTop + 9, { ...th, align: "right" });
+            text("TOTAL", cols.total, tableTop + 9, { ...th, align: "right" });
         };
 
-        text("ITEM", cols.n, tableTop + 9, th);
-        text("DESCRIÇÃO", cols.desc, tableTop + 9, th);
+        const nextPage = () => {
+            page = pdf.addPage([W, H]);
+            rect(0, 0, W, 63, flagGreen);
+            rect(0, 63, W, 3, lime);
+            text(`PROPOSTA COMERCIAL - Pedido ${number}`, M, 24, {
+                size: 13, bold: true, color: white
+            });
+            return 92;
+        };
 
-        text("QTD.", cols.qty, tableTop + 9, {
-            ...th,
-            align: "center"
-        });
-
-        text("VALOR UNIT.", cols.unit, tableTop + 9, {
-            ...th,
-            align: "right"
-        });
-
-        text("TOTAL", cols.total, tableTop + 9, {
-            ...th,
-            align: "right"
-        });
-
-        const rowTop = tableTop + 26;
-
-        rect(M, rowTop, tableW, 38, white, line);
-
-        text("01", cols.n, rowTop + 14, {
-            size: 9,
-            color: muted,
-            bold: true
-        });
-
-        text(order.product, cols.desc, rowTop + 14, {
-            size: 10,
-            bold: true,
-            maxWidth: cols.qty - cols.desc - 30
-        });
-
-        text(qty, cols.qty, rowTop + 14, {
-            size: 10,
-            align: "center"
-        });
-
-        text(money(unit), cols.unit, rowTop + 14, {
-            size: 9.5,
-            align: "right"
-        });
-
-        text(money(total), cols.total, rowTop + 14, {
-            size: 9.5,
-            bold: true,
-            align: "right",
-            maxWidth: 80
+        drawTableHeading();
+        items.forEach((item, index) => {
+            // Deixa espaço para o resumo/condições na página final.
+            if (rowTop + rowHeight + 195 > H - 47) {
+                const top = nextPage();
+                text("Itens da proposta (continuação)", M, top, { size: 12, bold: true });
+                tableTop = top + 24;
+                rowTop = tableTop + 26;
+                drawTableHeading();
+            }
+            rect(M, rowTop, tableW, rowHeight, index % 2 ? paper : white, line);
+            text(String(index + 1).padStart(2, "0"), cols.n, rowTop + 14, {
+                size: 9, color: muted, bold: true
+            });
+            text(item.name, cols.desc, rowTop + 14, {
+                size: 10, bold: true, maxWidth: cols.qty - cols.desc - 30
+            });
+            text(item.quantity, cols.qty, rowTop + 14, { size: 10, align: "center" });
+            text(money(item.unit_price), cols.unit, rowTop + 14, {
+                size: 9.5, align: "right", maxWidth: 78
+            });
+            const subtotal = item.unit_price === null
+                ? null : Math.round(item.unit_price * 100) * item.quantity / 100;
+            text(money(subtotal), cols.total, rowTop + 14, {
+                size: 9.5, bold: true, align: "right", maxWidth: 80
+            });
+            rowTop += rowHeight;
         });
 
         /* ---------- VALOR TOTAL ---------- */
 
-        const totalTop = rowTop + 54;
+        const totalTop = rowTop + 16;
         const boxW = 230;
 
         rect(
@@ -878,6 +872,7 @@ async function exportOrderQuotePDF(order) {
 
         if (order.notes) {
             cursor += 26;
+            if (cursor + 140 > H - 56) cursor = nextPage();
 
             text("Observações", M, cursor, {
                 size: 12,
@@ -924,7 +919,8 @@ async function exportOrderQuotePDF(order) {
             "Esta proposta está sujeita à confirmação de disponibilidade de materiais."
         ];
 
-        const termsTop = Math.max(cursor + 28, 515);
+        let termsTop = Math.max(cursor + 28, page === pdf.getPages()[0] ? 515 : 110);
+        if (termsTop + 110 > H - 55) termsTop = nextPage();
 
         text("Condições comerciais", M, termsTop, {
             size: 12,
@@ -962,43 +958,46 @@ async function exportOrderQuotePDF(order) {
 
         /* ---------- RODAPÉ ---------- */
 
-        rect(
-            0,
-            H - 44,
-            W,
-            44,
-            flagGreen
-        );
+        pdf.getPages().forEach((pdfPage) => {
+            page = pdfPage;
+            rect(
+                0,
+                H - 44,
+                W,
+                44,
+                flagGreen
+            );
 
-        rect(
-            0,
-            H - 47,
-            W,
-            3,
-            lime
-        );
+            rect(
+                0,
+                H - 47,
+                W,
+                3,
+                lime
+            );
 
-        text(
-            "Obrigado pela preferência!",
-            M,
-            H - 29,
-            {
-                size: 9,
-                bold: true,
-                color: white
-            }
-        );
+            text(
+                "Obrigado pela preferência!",
+                M,
+                H - 29,
+                {
+                    size: 9,
+                    bold: true,
+                    color: white
+                }
+            );
 
-        text(
-            "V3D Impressão 3D  |  site-v3d.vercel.app",
-            W - M,
-            H - 29,
-            {
-                size: 8.5,
-                color: rgb(0.62, 0.64, 0.61),
-                align: "right"
-            }
-        );
+            text(
+                "V3D Impressão 3D  |  site-v3d.vercel.app",
+                W - M,
+                H - 29,
+                {
+                    size: 8.5,
+                    color: rgb(0.62, 0.64, 0.61),
+                    align: "right"
+                }
+            );
+        });
 
         /* ---------- EXPORTAR PDF ---------- */
 
