@@ -165,14 +165,85 @@ router.delete('/produtos/:id', async (req, res) => {
 
 // /pedidos
 
+// Cada pedido pode conter vários produtos. A tabela é criada automaticamente.
+let orderItemsReady;
+function garantirTabelaItens() {
+    if (!orderItemsReady) {
+        orderItemsReady = db.query(`CREATE TABLE IF NOT EXISTS order_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id INT NOT NULL,
+            product_id INT NULL,
+            product_name VARCHAR(120) NOT NULL,
+            quantity INT NOT NULL,
+            unit_price DECIMAL(12,2) NULL,
+            INDEX idx_order_items_order (order_id)
+        )`).catch(err => { orderItemsReady = null; throw err; });
+    }
+    return orderItemsReady;
+}
+
+function validarItens(body) {
+    const source = Array.isArray(body.items) ? body.items : [
+        { name: body.product, quantity: body.quantity || 1,
+          unit_price: body.price == null ? null : Number(body.price) / Number(body.quantity || 1) }
+    ];
+    if (!source.length || source.length > 100) return null;
+    const items = source.map(item => ({
+        product_id: item.product_id == null || item.product_id === '' ? null : Number(item.product_id),
+        name: String(item.name || item.product_name || '').trim(),
+        quantity: Number(item.quantity),
+        unit_price: item.unit_price === '' || item.unit_price == null ? null : Number(item.unit_price)
+    }));
+    if (items.some(item => !item.name || item.name.length > 120 || !Number.isInteger(item.quantity) ||
+            item.quantity < 1 || item.quantity > 100000 ||
+            (item.product_id !== null && (!Number.isInteger(item.product_id) || item.product_id < 1)) ||
+            (item.unit_price !== null && (!Number.isFinite(item.unit_price) || item.unit_price < 0 || item.unit_price > 99999999)))) return null;
+    return items;
+}
+function resumoItens(items) {
+    return {
+        product: items.map(i => i.name).join(', ').slice(0, 120),
+        quantity: items.reduce((sum, i) => sum + i.quantity, 0),
+        price: items.some(i => i.unit_price === null) ? null :
+            Math.round(items.reduce((sum, i) => sum + Math.round(i.unit_price * 100) * i.quantity, 0)) / 100
+    };
+}
+async function gravarItens(conn, id, items) {
+    await conn.query('DELETE FROM order_items WHERE order_id = ?', [id]);
+    for (const item of items) {
+        await conn.query(`INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price)
+                          VALUES (?, ?, ?, ?, ?)`, [id, item.product_id, item.name, item.quantity, item.unit_price]);
+    }
+}
+async function juntarItens(orders) {
+    if (!orders.length) return orders;
+    const ids = orders.map(o => o.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const [rows] = await db.query(`SELECT * FROM order_items WHERE order_id IN (${placeholders}) ORDER BY id`, ids);
+    const byOrder = new Map();
+    for (const item of rows) {
+        if (!byOrder.has(item.order_id)) byOrder.set(item.order_id, []);
+        byOrder.get(item.order_id).push({ product_id: item.product_id, name: item.product_name,
+            quantity: item.quantity, unit_price: item.unit_price });
+    }
+    for (const order of orders) {
+        order.items = byOrder.get(order.id) || [{ name: order.product,
+            quantity: Number(order.quantity) || 1,
+            unit_price: order.price == null ? null : Number(order.price) / (Number(order.quantity) || 1), product_id: null }];
+    }
+    return orders;
+}
+
+
 router.get("/orders", async (req, res) => {
     try {
         await garantirTabelaFinanceiro();
+        await garantirTabelaItens();
         const [rows] = await db.query(
             "SELECT * FROM orders ORDER BY position ASC, id ASC"
         );
 
-        res.json(rows);
+        res.json(await juntarItens(rows));
     } catch (erro) {
         console.error(erro);
         res.status(500).json({ erro: "Erro ao buscar pedidos" });
@@ -246,61 +317,42 @@ router.put('/orders/:id/installments/:number', async (req, res) => {
 });
 
 router.post("/orders", async (req, res) => {
+    let conn;
     try {
-        const { customer, product, quantity, price, deadline, notes, payment_method, installments } = req.body;
-
+        const { customer, deadline, notes, payment_method, installments } = req.body;
+        const items = validarItens(req.body);
         const pagamento = normalizarPagamento(payment_method);
-        if (pagamento === undefined) {
-            return res.status(400).json({ erro: "Forma de pagamento inválida" });
-        }
-
         const parcelas = normalizarParcelas(pagamento, installments);
-        if (parcelas === undefined) {
-            return res.status(400).json({ erro: "Número de parcelas inválido (use de 1 a 12)" });
-        }
-
-        if (!customer || !product) {
-            return res.status(400).json({
-                erro: "Cliente e produto são obrigatórios"
-            });
-        }
-
-        // Garante a coluna payment_method antes do INSERT
+        if (!customer?.trim() || !items) return res.status(400).json({ erro: 'Informe cliente e ao menos um produto válido' });
+        if (pagamento === undefined || parcelas === undefined) return res.status(400).json({ erro: 'Pagamento ou parcelas inválidos' });
         await garantirTabelaFinanceiro();
-
-        // Número sequencial e posição no fim da coluna "aguardando"
-        const [[{ nextNumber }]] = await db.query(
-            "SELECT COALESCE(MAX(number), 0) + 1 AS nextNumber FROM orders"
-        );
-        const [[{ nextPosition }]] = await db.query(
-            "SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM orders WHERE status = 'aguardando'"
-        );
-
-        const [result] = await db.query(
-            `INSERT INTO orders
-                (number, customer, product, quantity, price, status, deadline, notes, position, payment_method, installments)
-             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)`,
-            [
-                nextNumber,
-                customer,
-                product,
-                quantity || 1,
-                price ?? null,
-                deadline || null,
-                notes || null,
-                nextPosition,
-                pagamento,
-                parcelas
-            ]
-        );
-
+        await garantirTabelaItens();
+        const resumo = resumoItens(items);
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+        // Serializa o cálculo do número sequencial para evitar duplicidade entre pedidos simultâneos.
+        await conn.query('SELECT GET_LOCK(?, 10) AS acquired', ['v3d_order_number']);
+        const [[{ nextNumber }]] = await conn.query('SELECT COALESCE(MAX(number), 0) + 1 AS nextNumber FROM orders');
+        const [[{ nextPosition }]] = await conn.query("SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM orders WHERE status = 'aguardando'");
+        const [result] = await conn.query(`INSERT INTO orders
+            (number, customer, product, quantity, price, status, deadline, notes, position, payment_method, installments)
+            VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)`,
+            [nextNumber, customer.trim(), resumo.product, resumo.quantity, resumo.price,
+             deadline || null, notes || null, nextPosition, pagamento, parcelas]);
+        await gravarItens(conn, result.insertId, items);
+        await conn.commit();
         res.status(201).json({ id: result.insertId, number: nextNumber });
     } catch (erro) {
+        if (conn) await conn.rollback().catch(() => {});
         console.error(erro);
-        res.status(500).json({ erro: "Erro ao criar pedido" });
+        res.status(500).json({ erro: 'Erro ao criar pedido' });
+    } finally {
+        if (conn) {
+            await conn.query('SELECT RELEASE_LOCK(?)', ['v3d_order_number']).catch(() => {});
+            conn.release();
+        }
     }
 });
-
 
 router.put("/orders/reordenar", async (req, res) => {
     const { status, ids } = req.body;
@@ -314,6 +366,7 @@ router.put("/orders/reordenar", async (req, res) => {
     try {
         // Antes da transação: criar tabela é DDL e encerraria a transação
         await garantirTabelaFinanceiro();
+        await garantirTabelaItens();
 
         conn = await db.getConnection();
         await conn.beginTransaction();
@@ -356,7 +409,9 @@ router.put("/orders/:id", async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
-        const { customer, product, quantity, price, deadline, notes, payment_method, installments } = req.body;
+        const { customer, deadline, notes, payment_method, installments } = req.body;
+        const items = validarItens(req.body);
+        const { product, quantity, price } = items ? resumoItens(items) : {};
 
         const pagamento = normalizarPagamento(payment_method);
         if (pagamento === undefined) {
@@ -368,13 +423,14 @@ router.put("/orders/:id", async (req, res) => {
             return res.status(400).json({ erro: "Número de parcelas inválido (use de 1 a 12)" });
         }
 
-        if (!customer || !product) {
+        if (!customer?.trim() || !items) {
             return res.status(400).json({
                 erro: "Cliente e produto são obrigatórios"
             });
         }
 
         await garantirTabelaFinanceiro();
+        await garantirTabelaItens();
 
         conn = await db.getConnection();
         await conn.beginTransaction();
@@ -404,6 +460,8 @@ router.put("/orders/:id", async (req, res) => {
             await conn.rollback();
             return res.status(404).json({ erro: "Pedido não encontrado" });
         }
+
+        await gravarItens(conn, id, items);
 
         // Pedido já concluído: o valor da receita acompanha a edição
         await sincronizarReceitas(conn, [id], { atualizar: true });
@@ -439,6 +497,8 @@ router.delete("/orders/:id", async (req, res) => {
             });
         }
 
+        await garantirTabelaItens();
+        await db.query('DELETE FROM order_items WHERE order_id = ?', [id]);
         res.json({
             message: "Pedido excluído com sucesso"
         });
