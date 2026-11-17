@@ -95,6 +95,7 @@ function createOrderCard(order, isNew = false) {
     const deadline = parseDeadline(order.deadline);
     const overdue = isOverdue(order);
     const quantity = Number(order.quantity) || 1;
+    const items = orderItemsOf(order);
 
     return `
         <article class="order-card${isNew ? " is-new" : ""}" draggable="true" data-id="${order.id}">
@@ -114,7 +115,7 @@ function createOrderCard(order, isNew = false) {
 
             <p class="order-product">
                 <i data-lucide="package"></i>
-                <span>${quantity}× ${escapeHtml(order.product)}</span>
+                <span>${items.map(item => `${Number(item.quantity)}× ${escapeHtml(item.name)}`).join("<br>")}</span>
             </p>
 
             ${order.notes ? `<p class="order-notes">${escapeHtml(order.notes)}</p>` : ""}
@@ -132,8 +133,8 @@ function createOrderCard(order, isNew = false) {
                 <span>Mover para</span>
                 <select class="order-status-select" data-id="${order.id}" aria-label="Mover pedido ${formatOrderNumber(order.number)} para outra etapa">
                     ${ORDER_STATUSES.map((s) =>
-                        `<option value="${s.value}"${s.value === order.status ? " selected" : ""}>${s.label}</option>`
-                    ).join("")}
+                `<option value="${s.value}"${s.value === order.status ? " selected" : ""}>${s.label}</option>`
+            ).join("")}
                 </select>
             </label>
         </article>
@@ -198,89 +199,106 @@ function productImageSrc(p) {
     return null;
 }
 
-function renderProductPicker(filter = "") {
-    const grid = document.getElementById("picker-grid");
-    if (!grid) return;
-
-    const term = filter.toLowerCase().trim();
-    const list = pickerProducts.filter((p) => (p.name || "").toLowerCase().includes(term));
-
-    if (!list.length) {
-        grid.innerHTML = `<p class="picker-empty">Nenhum produto encontrado.</p>`;
-        return;
+// Editor de múltiplos itens reutilizado nos modais de criação e edição.
+const itemEditors = {};
+function orderItemsOf(order) {
+    return Array.isArray(order.items) && order.items.length ? order.items : [{
+        name: order.product, quantity: Number(order.quantity) || 1,
+        unit_price: order.price == null ? null : Number(order.price) / (Number(order.quantity) || 1),
+        product_id: null
+    }];
+}
+function initItemsEditor(prefix) {
+    const id = (part) => `${prefix}${part}`;
+    const input = document.getElementById(id('order-product'));
+    const qty = document.getElementById(id('order-quantity'));
+    const unitPrice = document.getElementById(id('order-unit-price'));
+    const addBtn = document.getElementById(id('order-add-product'));
+    const list = document.getElementById(id('order-items'));
+    const total = document.getElementById(id('order-price'));
+    const panel = document.getElementById(prefix ? 'edit-picker-panel' : 'picker-panel');
+    const grid = document.getElementById(prefix ? 'edit-picker-grid' : 'picker-grid');
+    const picker = document.getElementById(prefix ? 'edit-product-picker' : 'product-picker');
+    if (!input || !list || !panel) return null;
+    let items = [], selectedProduct = null;
+    function render() {
+        list.innerHTML = items.map((item, index) => `<div class="order-item-row" data-index="${index}">
+            <div class="order-item-name">${escapeHtml(item.name)}</div>
+            <label>Qtd.<input class="item-qty" type="number" min="1" step="1" value="${item.quantity}" aria-label="Quantidade de ${escapeHtml(item.name)}"></label>
+            <label>Un. (R$)<input class="item-price" type="number" min="0" step="0.01" value="${item.unit_price ?? ''}" placeholder="A definir" aria-label="Preço de ${escapeHtml(item.name)}"></label>
+            <span class="order-item-subtotal">${item.unit_price == null ? 'A definir' : formatPrice(Math.round(item.unit_price * 100) * item.quantity / 100)}</span>
+            <button class="order-item-remove" type="button" aria-label="Remover ${escapeHtml(item.name)}" title="Remover"><i data-lucide="trash-2"></i></button>
+        </div>`).join('') || '<p class="picker-empty">Adicione pelo menos um produto.</p>';
+        const complete = items.every(item => item.unit_price !== null);
+        total.value = items.length && complete ? (items.reduce((acc, item) => acc + Math.round(item.unit_price * 100) * item.quantity, 0) / 100).toFixed(2) : '';
+        lucide.createIcons();
     }
-
-    grid.innerHTML = list.map((p, index) => {
-        const src = productImageSrc(p);
-
-        return `
-        <button type="button" class="picker-card" data-id="${p.id}" style="--i:${Math.min(index, 10)}">
-                <span class="picker-card-image">
-                    ${src
-                ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">`
-                : `<i data-lucide="image"></i>`}
-                </span>
+    function add() {
+        const name = input.value.trim();
+        const quantity = Number(qty.value);
+        const price = unitPrice.value === '' ? null : Number(unitPrice.value);
+        if (!name || !Number.isInteger(quantity) || quantity < 1 || (price !== null && (!Number.isFinite(price) || price < 0))) {
+            alert('Informe produto, quantidade válida e preço unitário não negativo.'); return false;
+        }
+        items.push({ name, quantity, unit_price: price, product_id: selectedProduct?.id ?? null });
+        input.value = ''; qty.value = '1'; unitPrice.value = ''; selectedProduct = null;
+        panel.hidden = true; render(); input.focus(); return true;
+    }
+    addBtn.addEventListener('click', add);
+    input.addEventListener('input', () => { selectedProduct = null; showPicker(); });
+    input.addEventListener('focus', showPicker);
+    input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); add(); } });
+    function showPicker() {
+        const term = input.value.toLowerCase().trim();
+        const products = pickerProducts.filter(p => (p.name || '').toLowerCase().includes(term));
+        grid.innerHTML = products.length ? products.map(p => {
+            const src = productImageSrc(p);
+            return `<button type="button" class="picker-card" data-id="${p.id}">
+                <span class="picker-card-image">${src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy">` : '<i data-lucide="image"></i>'}</span>
                 <span class="picker-card-name">${escapeHtml(p.name)}</span>
-                <span class="picker-card-price">${formatPrice(p.price)}</span>
-            </button>
-        `;
-    }).join("");
-
-    lucide.createIcons();
-}
-
-function initProductPicker() {
-    const picker = document.getElementById("product-picker");
-    const input = document.getElementById("order-product");
-    const panel = document.getElementById("picker-panel");
-    const grid = document.getElementById("picker-grid");
-    const priceInput = document.getElementById("order-price");
-    const quantityInput = document.getElementById("order-quantity");
-
-    if (!picker || !input || !panel || !grid) return;
-
-    const open = () => {
-        const wasClosed = panel.hidden;
-
-        renderProductPicker(input.value);
-        grid.classList.toggle("animate-cards", wasClosed); // só anima ao abrir, não a cada tecla
-        panel.hidden = false;
-    };
-    const close = () => { panel.hidden = true; };
-
-    input.addEventListener("focus", open);
-    input.addEventListener("click", open);
-    input.addEventListener("input", open); // filtra enquanto digita
-
-    grid.addEventListener("click", (event) => {
-        const card = event.target.closest(".picker-card");
-        if (!card) return;
-
-        const product = pickerProducts.find((p) => String(p.id) === card.dataset.id);
-        if (!product) return;
-
-        input.value = product.name;
-
-        // Se o valor total ainda está vazio, sugere preço × quantidade
-        if (priceInput.value === "" && product.price != null) {
-            const qty = Number(quantityInput.value) || 1;
-            priceInput.value = (Number(product.price) * qty).toFixed(2);
-        }
-
-        close();
+                <span class="picker-card-price">${formatPrice(p.price)}</span></button>`;
+        }).join('') : '<p class="picker-empty">Nenhum produto encontrado. Você pode digitar um nome e adicionar.</p>';
+        panel.hidden = false; lucide.createIcons();
+    }
+    grid.addEventListener('click', event => {
+        const card = event.target.closest('.picker-card'); if (!card) return;
+        const product = pickerProducts.find(p => String(p.id) === card.dataset.id); if (!product) return;
+        input.value = product.name; unitPrice.value = product.price == null ? '' : Number(product.price).toFixed(2);
+        selectedProduct = product; panel.hidden = true; qty.focus();
     });
-
-    // Fecha ao clicar fora (remove o listener da visita anterior)
-    if (pickerOutsideHandler) document.removeEventListener("click", pickerOutsideHandler);
-
-    pickerOutsideHandler = (event) => {
-        const currentPicker = document.getElementById("product-picker");
-        if (currentPicker && !currentPicker.contains(event.target)) {
-            document.getElementById("picker-panel").hidden = true;
+    document.addEventListener('click', event => { if (picker.isConnected && !picker.contains(event.target)) panel.hidden = true; });
+    list.addEventListener('click', event => {
+        const btn = event.target.closest('.order-item-remove'); if (!btn) return;
+        items.splice(Number(btn.closest('.order-item-row').dataset.index), 1); render();
+    });
+    list.addEventListener('change', event => {
+        const row = event.target.closest('.order-item-row'); if (!row) return;
+        const item = items[Number(row.dataset.index)];
+        if (event.target.classList.contains('item-qty')) {
+            const value = Number(event.target.value);
+            if (!Number.isInteger(value) || value < 1) { alert('Quantidade deve ser maior que zero.'); render(); return; }
+            item.quantity = value;
+        } else if (event.target.classList.contains('item-price')) {
+            const value = event.target.value === '' ? null : Number(event.target.value);
+            if (value !== null && (!Number.isFinite(value) || value < 0)) { alert('Preço inválido.'); render(); return; }
+            item.unit_price = value;
         }
+        render();
+    });
+    const editor = {
+        reset() { items = []; input.value = ''; qty.value = 1; unitPrice.value = ''; selectedProduct = null; panel.hidden = true; render(); },
+        set(data) {
+            items = data.map(item => ({
+                name: item.name || item.product_name, quantity: Number(item.quantity) || 1,
+                unit_price: item.unit_price == null ? null : Number(item.unit_price), product_id: item.product_id ?? null
+            })); render();
+        },
+        get() { return items.map(item => ({ ...item })); }
     };
-    document.addEventListener("click", pickerOutsideHandler);
+    itemEditors[prefix || 'new'] = editor;
+    render(); return editor;
 }
+function initProductPicker() { return initItemsEditor(''); }
 
 // Busca o catálogo e prepara o seletor
 async function loadProductSuggestions() {
@@ -1066,17 +1084,22 @@ function initOrderModals() {
     document.addEventListener("keydown", ordersEscHandler);
 
     quoteNo?.addEventListener("click", () => closeModal(quoteModal));
+
     quoteYes?.addEventListener("click", async () => {
         if (!quoteOrder || quoteYes.disabled) return;
+
         quoteYes.disabled = true;
+
         try {
-            if (await exportOrderQuotePDF(quoteOrder)) closeModal(quoteModal);
+            if (await exportOrderQuotePDF(quoteOrder)) {
+                closeModal(quoteModal);
+            }
         } finally {
             quoteYes.disabled = false;
         }
     });
 
-    initProductPicker();
+    const newEditor = initProductPicker();
 
     const syncNewInstallments = bindInstallments(
         document.getElementById("order-payment"),
@@ -1086,6 +1109,7 @@ function initOrderModals() {
     /* Novo pedido */
     newOrderBtn.addEventListener("click", () => {
         orderForm.reset();
+        newEditor.reset();
         syncNewInstallments();
         document.getElementById("picker-panel").hidden = true;
         orderModal.hidden = false;
@@ -1101,8 +1125,7 @@ function initOrderModals() {
 
         const body = {
             customer: document.getElementById("order-customer").value.trim(),
-            product: document.getElementById("order-product").value.trim(),
-            quantity: Number(document.getElementById("order-quantity").value) || 1,
+            items: newEditor.get(),
             price: price === "" ? null : Number(price),
             deadline: deadline || null,
             notes: document.getElementById("order-notes").value.trim(),
@@ -1112,6 +1135,7 @@ function initOrderModals() {
                 : null,
         };
 
+        if (!body.items.length) { alert("Adicione pelo menos um produto ao pedido."); return; }
         submitBtn.disabled = true;
 
         try {
@@ -1126,6 +1150,7 @@ function initOrderModals() {
             const created = await response.json().catch(() => null);
 
             orderForm.reset();
+            newEditor.reset();
             closeModal(orderModal);
             quoteOrder = { ...body, ...created };
             if (quoteModal?.isConnected) {
@@ -1190,6 +1215,7 @@ function initOrderEditModal() {
     const notes = document.getElementById("edit-order-notes");
     const payment = document.getElementById("edit-order-payment");
     const installments = document.getElementById("edit-order-installments");
+    const editEditor = initItemsEditor("edit-");
     const syncInstallments = bindInstallments(payment, installments);
     const title = document.getElementById("order-edit-title");
 
@@ -1222,9 +1248,7 @@ function initOrderEditModal() {
         title.textContent = `Editar pedido ${formatOrderNumber(order.number)}`;
 
         customer.value = order.customer ?? "";
-        product.value = order.product ?? "";
-        quantity.value = Number(order.quantity) || 1;
-        price.value = order.price ?? "";
+        editEditor.set(orderItemsOf(order));
         // O input date precisa de "YYYY-MM-DD"
         deadline.value = order.deadline ? String(order.deadline).slice(0, 10) : "";
         notes.value = order.notes ?? "";
@@ -1246,8 +1270,7 @@ function initOrderEditModal() {
 
         const body = {
             customer: customer.value.trim(),
-            product: product.value.trim(),
-            quantity: Number(quantity.value) || 1,
+            items: editEditor.get(),
             price: price.value === "" ? null : Number(price.value),
             deadline: deadline.value || null,
             notes: notes.value.trim(),
@@ -1255,6 +1278,7 @@ function initOrderEditModal() {
             installments: payment.value === "credito" ? Number(installments.value) || null : null,
         };
 
+        if (!body.items.length) { alert("Adicione pelo menos um produto ao pedido."); return; }
         submitBtn.disabled = true;
 
         try {
@@ -1266,11 +1290,7 @@ function initOrderEditModal() {
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            // Atualiza a cópia local (status e posição continuam os mesmos)
-            const order = allOrders.find((o) => String(o.id) === String(id));
-            if (order) Object.assign(order, body);
-
-            renderOrders();
+            await loadOrders();
             closeModal();
         } catch (erro) {
             console.error("Erro ao atualizar pedido:", erro);
@@ -1303,7 +1323,7 @@ function openOrderDetail(id) {
     setText("order-detail-number", `Pedido ${formatOrderNumber(order.number)}`);
     setText("order-detail-title", order.customer);
     setText("order-detail-customer", order.customer);
-    setText("order-detail-product", order.product);
+    setText("order-detail-product", orderItemsOf(order).map(item => `${item.quantity}× ${item.name}`).join(" | "));
     setText("order-detail-quantity", `${quantity} ${quantity === 1 ? "unidade" : "unidades"}`);
     setText("order-detail-price", formatPrice(order.price));
     setText("order-detail-deadline", deadline
@@ -1376,7 +1396,7 @@ function initOrderDetailModal() {
    ============================================================ */
 function localInstallmentDate() {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function initOrdersPage() {

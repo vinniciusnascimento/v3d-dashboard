@@ -405,28 +405,22 @@ function ordersPage() {
                     <input type="text" id="order-customer" placeholder="Nome do cliente" required maxlength="120">
                 </div>
 
-                <div class="form-group">
-                    <label for="order-product">Produto *</label>
+<div class="form-group">
+                    <label for="order-product">Adicionar produtos *</label>
                     <div class="product-picker" id="product-picker">
-                        <input type="text" id="order-product"
-                            placeholder="Clique para escolher ou digite" required maxlength="120" autocomplete="off">
-
-                        <div class="picker-panel" id="picker-panel" hidden>
-                            <div class="picker-grid" id="picker-grid"></div>
-                        </div>
+                        <input type="text" id="order-product" placeholder="Buscar produto no catálogo ou digitar" maxlength="120" autocomplete="off">
+                        <div class="picker-panel" id="picker-panel" hidden><div class="picker-grid" id="picker-grid"></div></div>
                     </div>
+                    <div class="order-add-line">
+                        <input type="number" id="order-quantity" min="1" step="1" value="1" aria-label="Quantidade a adicionar">
+                        <input type="number" id="order-unit-price" min="0" step="0.01" placeholder="Preço un. (R$)" aria-label="Preço unitário a adicionar">
+                        <button type="button" class="btn-cancel" id="order-add-product"><i data-lucide="plus"></i> Adicionar</button>
+                    </div>
+                    <div id="order-items" class="order-items"></div>
                 </div>
-
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="order-quantity">Quantidade *</label>
-                        <input type="number" id="order-quantity" min="1" step="1" value="1" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="order-price">Valor total (R$)</label>
-                        <input type="number" id="order-price" min="0" step="0.01" placeholder="0,00">
-                    </div>
+                <div class="form-group">
+                    <label for="order-price">Valor total (R$)</label>
+                    <input type="number" id="order-price" readonly placeholder="0,00">
                 </div>
 
                 <div class="form-grid">
@@ -523,22 +517,22 @@ function ordersPage() {
                     <input type="text" id="edit-order-customer" required maxlength="120">
                 </div>
 
-                <div class="form-group">
-                    <label for="edit-order-product">Produto *</label>
-                    <input type="text" id="edit-order-product" list="order-product-list"
-                        required maxlength="120" autocomplete="off">
+<div class="form-group">
+                    <label for="edit-order-product">Adicionar produtos *</label>
+                    <div class="product-picker" id="edit-product-picker">
+                        <input type="text" id="edit-order-product" placeholder="Buscar produto no catálogo ou digitar" maxlength="120" autocomplete="off">
+                        <div class="picker-panel" id="edit-picker-panel" hidden><div class="picker-grid" id="edit-picker-grid"></div></div>
+                    </div>
+                    <div class="order-add-line">
+                        <input type="number" id="edit-order-quantity" min="1" step="1" value="1" aria-label="Quantidade a adicionar">
+                        <input type="number" id="edit-order-unit-price" min="0" step="0.01" placeholder="Preço un. (R$)" aria-label="Preço unitário a adicionar">
+                        <button type="button" class="btn-cancel" id="edit-order-add-product"><i data-lucide="plus"></i> Adicionar</button>
+                    </div>
+                    <div id="edit-order-items" class="order-items"></div>
                 </div>
-
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="edit-order-quantity">Quantidade *</label>
-                        <input type="number" id="edit-order-quantity" min="1" step="1" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="edit-order-price">Valor total (R$)</label>
-                        <input type="number" id="edit-order-price" min="0" step="0.01" placeholder="0,00">
-                    </div>
+                <div class="form-group">
+                    <label for="edit-order-price">Valor total (R$)</label>
+                    <input type="number" id="edit-order-price" readonly placeholder="0,00">
                 </div>
 
                 <div class="form-grid">
