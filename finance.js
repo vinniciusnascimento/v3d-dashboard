@@ -312,7 +312,7 @@ function initFinanceModals() {
 
     financeEscHandler = (event) => {
         if (event.key !== "Escape") return;
-        [modal, deleteModal].forEach(closeModal);
+        [modal, deleteModal, document.getElementById("installments-modal")].filter(Boolean).forEach(closeModal);
     };
     document.addEventListener("keydown", financeEscHandler);
 
@@ -431,7 +431,82 @@ function initFinanceModals() {
    Inicialização da página de Financeiro
    (chamada no fim de financePage(), em pages.js)
    ============================================================ */
+let financeInstallmentOrders = [];
+async function loadFinanceInstallmentOrders() {
+    const container = document.getElementById('finance-order-installments');
+    container.textContent = 'Carregando pedidos...';
+    try {
+        const response = await fetch(ORDERS_API_URL);
+        if (!response.ok) throw new Error('Não foi possível carregar os pedidos parcelados.');
+        const orders = await response.json();
+        if (!container.isConnected) return;
+        financeInstallmentOrders = orders.filter(order => order.payment_method === 'credito');
+        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Etapa</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
+            '<tr><td>' + formatOrderNumber(order.number) + '</td><td>' + escapeHtml(order.customer) + '</td><td>' + escapeHtml((ORDER_STATUSES.find(st => st.value === order.status) || {}).label || order.status) + '</td><td>' + formatMoney(order.price) + '</td><td>' + (Number(order.installments) || 1) + 'x</td><td><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
+        ).join('') + '</tbody></table></div>' : '<p class="products-empty">Nenhum pedido no crédito encontrado.</p>';
+    } catch (error) {
+        if (container.isConnected) container.textContent = error.message;
+    }
+}
+function initFinanceInstallments() {
+    const board = document.getElementById('finance-order-installments');
+    if (!board) return;
+    board.addEventListener('click', async (event) => {
+        const btn = event.target.closest('.order-installments-btn');
+        if (!btn) return;
+        event.stopPropagation();
+        const modal = document.getElementById('installments-modal');
+        const list = document.getElementById('installments-list');
+        const id = btn.dataset.id;
+        const order = financeInstallmentOrders.find(o => String(o.id) === String(id));
+        let saving = false;
+        modal.querySelector('h2').textContent = `Parcelas do pedido ${formatOrderNumber(order.number)}`;
+        modal.hidden = false;
+        const refresh = async () => {
+            list.textContent = 'Carregando parcelas...';
+            try {
+                const response = await fetch(`${ORDERS_API_URL}/${id}/installments`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || 'Erro ao carregar');
+                const paid = data.installments.filter(p => p.paid_at);
+                const received = paid.reduce((v,p) => v + p.amount, 0);
+                list.innerHTML = `<p><strong>${paid.length}/${data.installments.length} pagas</strong> — Recebido: ${formatPrice(received)} — Pendente: ${formatPrice(Math.max(0, Number(order.price || 0)-received))}</p>` +
+                    data.installments.map(p => `<div class="installment-row">
+                        <label><input type="checkbox" data-number="${p.number}" ${p.paid_at ? 'checked' : ''}> ${p.number}ª parcela — ${formatPrice(p.amount)}</label>
+                        <input type="date" data-date="${p.number}" value="${p.paid_at || localInstallmentDate()}" aria-label="Data da parcela ${p.number}">
+                    </div>`).join('');
+                lucide.createIcons();
+            } catch (error) { list.textContent = error.message; }
+        };
+        list.onchange = async (e) => {
+            if (saving) return;
+            const input = e.target;
+            const number = input.dataset.number || input.dataset.date;
+            if (!number) return;
+            const checked = list.querySelector(`input[data-number="${number}"]`).checked;
+            const date = list.querySelector(`input[data-date="${number}"]`).value;
+            saving = true;
+            list.querySelectorAll('input').forEach(el => { el.disabled = true; });
+            try {
+                const response = await fetch(`${ORDERS_API_URL}/${id}/installments/${number}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paid: checked, paid_at: date })
+                });
+                if (!response.ok) throw new Error((await response.json()).erro || 'Erro ao salvar');
+            } catch (error) { alert(error.message); }
+            await refresh();
+            await loadFinance();
+            saving = false;
+        };
+        modal.querySelector('[data-close-installments]').onclick = () => { modal.hidden = true; };
+        modal.onclick = e => { if (e.target === modal) modal.hidden = true; };
+        await refresh();
+    });
+}
+
 function initFinancePage() {
+    initFinanceInstallments();
+    loadFinanceInstallmentOrders();
     initFinanceFilters();
     initFinanceModals();
 

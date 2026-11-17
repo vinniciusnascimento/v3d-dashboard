@@ -69,6 +69,14 @@ export function garantirTabelaFinanceiro() {
                 ) DEFAULT CHARSET = utf8mb4
             `);
 
+            await db.query(`CREATE TABLE IF NOT EXISTS order_installment_payments (
+                order_id INT NOT NULL,
+                installment_number TINYINT UNSIGNED NOT NULL,
+                paid_at DATE NOT NULL,
+                PRIMARY KEY (order_id, installment_number),
+                KEY idx_installment_paid_at (paid_at)
+            ) DEFAULT CHARSET=utf8mb4`);
+
             // Forma de pagamento (opcional) nos lançamentos e nos pedidos
             await garantirColuna('finance_entries', 'payment_method', 'VARCHAR(20) NULL');
             await garantirColuna('orders', 'payment_method', 'VARCHAR(20) NULL');
@@ -129,22 +137,38 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
 
     for (const pedido of pedidos) {
         const valor = Number(pedido.price);
-        const concluido = pedido.status === 'concluido' && valor > 0;
-
-        if (!concluido) {
+        const parcelado = pedido.payment_method === 'credito';
+        let valorRecebido = valor;
+        let dataRecebimento = hoje;
+        if (parcelado) {
+            const [pagas] = await conn.query(
+                `SELECT installment_number, DATE_FORMAT(paid_at, '%Y-%m-%d') AS paid_at
+                   FROM order_installment_payments WHERE order_id = ? ORDER BY installment_number`,
+                [pedido.id]
+            );
+            const totalCentavos = Math.round(valor * 100);
+            const quantidadeParcelas = Number(pedido.installments) || 1;
+            const base = Math.floor(totalCentavos / quantidadeParcelas);
+            const resto = totalCentavos % quantidadeParcelas;
+            const recebidos = pagas.reduce((total, p) => total + base + (p.installment_number <= resto ? 1 : 0), 0);
+            valorRecebido = recebidos / 100;
+            dataRecebimento = pagas.length ? pagas.map(p => p.paid_at).sort().at(-1) : hoje;
+        }
+        // Só pedidos concluídos entram no Financeiro. No crédito,
+        // a receita corresponde às parcelas efetivamente pagas.
+        const registrar = pedido.status === 'concluido' && valorRecebido > 0;
+        if (!registrar) {
             await conn.query('DELETE FROM finance_entries WHERE order_id = ?', [pedido.id]);
             continue;
         }
-
-        const reescrever = atualizar
-            ? 'amount = VALUES(amount), description = VALUES(description), payment_method = VALUES(payment_method), installments = VALUES(installments)'
+        const reescrever = (atualizar || parcelado)
+            ? 'amount = VALUES(amount), description = VALUES(description), entry_date = VALUES(entry_date), payment_method = VALUES(payment_method), installments = VALUES(installments)'
             : 'id = id';
-
         await conn.query(
             `INSERT INTO finance_entries (type, description, category, amount, entry_date, order_id, payment_method, installments)
              VALUES ('receita', ?, 'Pedidos', ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE ${reescrever}`,
-            [descricaoDoPedido(pedido), arredondar(valor), hoje, pedido.id, pedido.payment_method || null, pedido.installments || null]
+            [descricaoDoPedido(pedido), arredondar(valorRecebido), dataRecebimento, pedido.id, pedido.payment_method || null, pedido.installments || null]
         );
     }
 }

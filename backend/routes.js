@@ -167,6 +167,7 @@ router.delete('/produtos/:id', async (req, res) => {
 
 router.get("/orders", async (req, res) => {
     try {
+        await garantirTabelaFinanceiro();
         const [rows] = await db.query(
             "SELECT * FROM orders ORDER BY position ASC, id ASC"
         );
@@ -175,6 +176,72 @@ router.get("/orders", async (req, res) => {
     } catch (erro) {
         console.error(erro);
         res.status(500).json({ erro: "Erro ao buscar pedidos" });
+    }
+});
+
+router.get('/orders/:id/installments', async (req, res) => {
+    try {
+        await garantirTabelaFinanceiro();
+        const [[order]] = await db.query('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+        if (!order) return res.status(404).json({ erro: 'Pedido não encontrado' });
+        if (order.payment_method !== 'credito') return res.status(400).json({ erro: 'Pedido sem parcelamento no crédito' });
+        const [payments] = await db.query(
+            "SELECT installment_number, DATE_FORMAT(paid_at, '%Y-%m-%d') AS paid_at FROM order_installment_payments WHERE order_id = ?",
+            [order.id]
+        );
+        const count = Number(order.installments) || 1;
+        const cents = Math.round(Number(order.price || 0) * 100);
+        res.json({ installments: Array.from({ length: count }, (_, index) => ({
+            number: index + 1,
+            amount: (Math.floor(cents / count) + (index < cents % count ? 1 : 0)) / 100,
+            paid_at: payments.find(p => Number(p.installment_number) === index + 1)?.paid_at || null
+        })) });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ erro: 'Erro ao carregar parcelas' });
+    }
+});
+
+router.put('/orders/:id/installments/:number', async (req, res) => {
+    let conn;
+    try {
+        const { paid, paid_at } = req.body || {};
+        const number = Number(req.params.number);
+        if (typeof paid !== 'boolean' || !Number.isInteger(number) || number < 1) {
+            return res.status(400).json({ erro: 'Parcela ou pagamento inválido' });
+        }
+        const date = typeof paid_at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
+            ? new Date(`${paid_at}T00:00:00Z`) : null;
+        if (paid && (!date || isNaN(date) || date.toISOString().slice(0, 10) !== paid_at)) {
+            return res.status(400).json({ erro: 'Informe uma data de pagamento válida' });
+        }
+        await garantirTabelaFinanceiro();
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+        const [[order]] = await conn.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
+        if (!order || order.payment_method !== 'credito' || number > (Number(order.installments) || 1)) {
+            await conn.rollback();
+            return res.status(order ? 400 : 404).json({ erro: 'Pedido ou parcela não encontrado' });
+        }
+        if (paid && !(Number(order.price) > 0)) {
+            await conn.rollback();
+            return res.status(400).json({ erro: 'Informe o valor do pedido antes de registrar pagamentos' });
+        }
+        if (paid) {
+            await conn.query(`INSERT INTO order_installment_payments (order_id, installment_number, paid_at)
+                VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE paid_at = VALUES(paid_at)`, [order.id, number, paid_at]);
+        } else {
+            await conn.query('DELETE FROM order_installment_payments WHERE order_id = ? AND installment_number = ?', [order.id, number]);
+        }
+        await sincronizarReceitas(conn, [order.id], { atualizar: true });
+        await conn.commit();
+        res.json({ ok: true });
+    } catch (error) {
+        if (conn) await conn.rollback().catch(() => {});
+        console.error(error);
+        res.status(500).json({ erro: 'Erro ao salvar pagamento da parcela' });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
@@ -311,6 +378,19 @@ router.put("/orders/:id", async (req, res) => {
 
         conn = await db.getConnection();
         await conn.beginTransaction();
+
+        const [[existing]] = await conn.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [id]);
+        const [[{ paidCount }]] = await conn.query(
+            'SELECT COUNT(*) AS paidCount FROM order_installment_payments WHERE order_id = ?', [id]
+        );
+        if (existing && Number(paidCount) > 0 && (
+            pagamento !== existing.payment_method ||
+            (Number(parcelas) || 1) !== (Number(existing.installments) || 1) ||
+            Number(price) !== Number(existing.price)
+        )) {
+            await conn.rollback();
+            return res.status(400).json({ erro: 'Desmarque as parcelas pagas antes de alterar o valor ou o parcelamento do pedido' });
+        }
 
         const [result] = await conn.query(
             `UPDATE orders

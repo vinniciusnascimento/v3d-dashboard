@@ -710,6 +710,16 @@ function financePage() {
     </div>
 </section>
 
+<section class="products-section">
+<div class="section-header"><div><h2>Parcelas dos pedidos</h2><p>Acompanhe os pagamentos dos pedidos no crédito, desde a criação. A receita entra no Financeiro quando o pedido é concluído.</p></div></div>
+<div id="finance-order-installments" aria-live="polite"></div>
+</section>
+<div class="modal-overlay" id="installments-modal" hidden>
+  <div class="product-modal" role="dialog" aria-modal="true" aria-label="Gerenciar parcelas">
+    <div class="modal-header"><h2>Gerenciar parcelas</h2><button type="button" class="icon-button" data-close-installments aria-label="Fechar"><i data-lucide="x"></i></button></div>
+    <div class="form-body" id="installments-list"></div>
+  </div>
+</div>
 <!-- Modal de novo / editar lançamento -->
 <div class="modal-overlay" id="finance-modal" hidden>
     <div class="product-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">

@@ -272,6 +272,7 @@ main h1 {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px;
+  margin-bottom: 14px;
 }
 
 .section-header {
@@ -1871,3 +1872,9 @@ main h1 {
 .form-group[hidden] {
   display: none;
 }
+/* Controle de parcelas */
+.order-installments-btn { width: 100%; margin: 10px 0; cursor: pointer; }
+.installment-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+.installment-row label { display:flex; gap:8px; align-items:center; }
+.installment-row input[type="date"] { padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); max-width:155px; }
+@media(max-width:520px) { .installment-row { flex-wrap:wrap; } }

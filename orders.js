@@ -767,7 +767,7 @@ function initOrderDetailModal() {
 
     // Clique no card (ignora lixeira e seletor "Mover para")
     board.addEventListener("click", (event) => {
-        if (event.target.closest(".order-delete, .order-edit, .order-move")) return;
+        if (event.target.closest(".order-delete, .order-edit, .order-move, .order-installments-btn")) return;
 
         const card = event.target.closest(".order-card");
         if (!card) return;
@@ -780,7 +780,13 @@ function initOrderDetailModal() {
    Inicialização da página de Pedidos
    (chamada no fim de ordersPage(), em pages.js)
    ============================================================ */
+function localInstallmentDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function initOrdersPage() {
+
     initOrdersDragAndDrop();
     initOrderStatusSelect();
     initOrderModals();
