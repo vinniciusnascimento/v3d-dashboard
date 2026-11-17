@@ -53,6 +53,40 @@ navLinks.forEach((link) => {
 });
 
 /* ============================================================
+   Menu lateral responsivo (gaveta no celular/tablet)
+   ============================================================ */
+const sidebar = document.getElementById("sidebar");
+const menuToggle = document.getElementById("menu-toggle");
+const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+
+function setMenuOpen(open) {
+    sidebar.classList.toggle("open", open);
+    sidebarBackdrop.hidden = !open;
+    document.body.classList.toggle("menu-open", open);
+    menuToggle.setAttribute("aria-expanded", String(open));
+}
+
+menuToggle.addEventListener("click", () => {
+    setMenuOpen(!sidebar.classList.contains("open"));
+});
+
+sidebarBackdrop.addEventListener("click", () => setMenuOpen(false));
+
+// Fecha a gaveta ao escolher uma página
+sidebar.querySelectorAll("nav a").forEach((link) => {
+    link.addEventListener("click", () => setMenuOpen(false));
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setMenuOpen(false);
+});
+
+// Voltou para a tela grande: garante que a gaveta não fique "presa" aberta
+window.matchMedia("(min-width: 901px)").addEventListener("change", (e) => {
+    if (e.matches) setMenuOpen(false);
+});
+
+/* ============================================================
    Utilitários
    ============================================================ */
 const API_URL = "/api/produtos";

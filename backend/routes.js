@@ -232,11 +232,18 @@ router.put("/orders/reordenar", async (req, res) => {
         await conn.commit();
         res.json({ ok: true });
     } catch (erro) {
-        await conn.rollback();
-        console.error(erro);
-        res.status(500).json({ erro: "Erro ao reordenar pedidos" });
-    } finally {
-        conn.release();
+        console.error("ERRO PUT PRODUTOS:", {
+            message: erro.message,
+            code: erro.code,
+            sqlMessage: erro.sqlMessage,
+            sqlState: erro.sqlState
+        });
+
+        res.status(500).json({
+            erro: "Erro ao atualizar produto",
+            codigo: erro.code || null,
+            mensagem: erro.sqlMessage || erro.message
+        });
     }
 });
 
