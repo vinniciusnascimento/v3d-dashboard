@@ -3,7 +3,7 @@
    Depende de: app.js (escapeHtml, formatPrice, API_URL) e lucide
    ============================================================ */
 
-const ORDERS_API_URL = "/api/orders";
+const ORDERS_API_URL = "http://localhost:5000/api/orders";
 
 let allOrders = [];
 let draggedCard = null;
@@ -437,6 +437,88 @@ function initOrderModals() {
     });
 }
 
+/* ---------- Modal de detalhes do pedido ---------- */
+
+let detailEscHandler = null;
+
+function openOrderDetail(id) {
+    const modal = document.getElementById("order-detail-modal");
+    const order = allOrders.find((o) => String(o.id) === String(id));
+    if (!modal || !order) return;
+
+    const setText = (elId, text) => {
+        document.getElementById(elId).textContent = text;
+    };
+
+    const deadline = parseDeadline(order.deadline);
+    const quantity = Number(order.quantity) || 1;
+    const status = ORDER_STATUSES.find((s) => s.value === order.status);
+    const statusLabel = status ? status.label : order.status;
+
+    setText("order-detail-number", `Pedido ${formatOrderNumber(order.number)}`);
+    setText("order-detail-title", order.customer);
+    setText("order-detail-customer", order.customer);
+    setText("order-detail-product", order.product);
+    setText("order-detail-quantity", `${quantity} ${quantity === 1 ? "unidade" : "unidades"}`);
+    setText("order-detail-price", formatPrice(order.price));
+    setText("order-detail-deadline", deadline
+        ? deadline.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
+        : "Sem prazo");
+    setText("order-detail-stage", statusLabel);
+    setText("order-detail-status", statusLabel);
+
+    const notes = document.getElementById("order-detail-notes");
+    notes.textContent = order.notes || "Sem observações.";
+    notes.classList.toggle("is-empty", !order.notes);
+
+    // Data de criação (só aparece se a API enviar o campo)
+    const createdRaw = order.created_at || order.createdAt;
+    const created = createdRaw ? new Date(createdRaw) : null;
+    setText("order-detail-created", created && !isNaN(created)
+        ? `Criado em ${created.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`
+        : "");
+
+    // Cor do selo acompanha a etapa
+    document.getElementById("order-detail-status").dataset.status = order.status;
+    document.getElementById("order-detail-overdue").hidden = !isOverdue(order);
+
+    modal.hidden = false;
+    lucide.createIcons();
+}
+
+function initOrderDetailModal() {
+    const modal = document.getElementById("order-detail-modal");
+    const board = document.getElementById("orders-board");
+    if (!modal || !board) return;
+
+    const closeModal = () => { modal.hidden = true; };
+
+    modal.querySelectorAll("[data-close-modal]").forEach((btn) => {
+        btn.addEventListener("click", closeModal);
+    });
+
+    modal.addEventListener("click", (event) => {
+        if (event.target === modal) closeModal();
+    });
+
+    if (detailEscHandler) document.removeEventListener("keydown", detailEscHandler);
+
+    detailEscHandler = (event) => {
+        if (event.key === "Escape") closeModal();
+    };
+    document.addEventListener("keydown", detailEscHandler);
+
+    // Clique no card (ignora lixeira e seletor "Mover para")
+    board.addEventListener("click", (event) => {
+        if (event.target.closest(".order-delete, .order-move")) return;
+
+        const card = event.target.closest(".order-card");
+        if (!card) return;
+
+        openOrderDetail(card.dataset.id);
+    });
+}
+
 /* ============================================================
    Inicialização da página de Pedidos
    (chamada no fim de ordersPage(), em pages.js)
@@ -445,6 +527,7 @@ function initOrdersPage() {
     initOrdersDragAndDrop();
     initOrderStatusSelect();
     initOrderModals();
+    initOrderDetailModal();
 
     lucide.createIcons();
     loadOrders();
