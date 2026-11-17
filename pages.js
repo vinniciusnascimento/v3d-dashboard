@@ -3,6 +3,20 @@ const content = document.querySelector("#content");
 const allLinks = document.querySelectorAll("a")
 const productsLink = document.querySelector(".linkProducts")
 const ordersLink = document.querySelector(".linkOrders")
+const financeLink = document.querySelector(".linkFinance")
+
+// Parcelas do cartão de crédito (1x = à vista)
+const installmentsOptionsHtml = Array.from({ length: 12 }, (_, i) =>
+    `<option value="${i + 1}">${i === 0 ? "À vista (1x)" : `${i + 1}x`}</option>`
+).join("");
+
+// Opções de forma de pagamento (opcional: a primeira opção é vazia)
+const paymentOptionsHtml = `<option value="">Não informada</option>` + [
+    ["pix", "Pix"],
+    ["credito", "Cartão de crédito"],
+    ["debito", "Cartão de débito"],
+    ["dinheiro", "Dinheiro"],
+].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
 
 function removeClasses() {
     allLinks.forEach(link => {
@@ -414,9 +428,21 @@ function ordersPage() {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="order-deadline">Prazo de entrega</label>
-                    <input type="date" id="order-deadline">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="order-deadline">Prazo de entrega</label>
+                        <input type="date" id="order-deadline">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="order-payment">Forma de pagamento</label>
+                        <select id="order-payment">${paymentOptionsHtml}</select>
+                    </div>
+                </div>
+
+                <div class="form-group" hidden>
+                    <label for="order-installments">Parcelas</label>
+                    <select id="order-installments">${installmentsOptionsHtml}</select>
                 </div>
 
                 <div class="form-group">
@@ -500,9 +526,21 @@ function ordersPage() {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="edit-order-deadline">Prazo de entrega</label>
-                    <input type="date" id="edit-order-deadline">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-order-deadline">Prazo de entrega</label>
+                        <input type="date" id="edit-order-deadline">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-order-payment">Forma de pagamento</label>
+                        <select id="edit-order-payment">${paymentOptionsHtml}</select>
+                    </div>
+                </div>
+
+                <div class="form-group" hidden>
+                    <label for="edit-order-installments">Parcelas</label>
+                    <select id="edit-order-installments">${installmentsOptionsHtml}</select>
                 </div>
 
                 <div class="form-group">
@@ -570,6 +608,10 @@ function ordersPage() {
                     <dt>Etapa</dt>
                     <dd id="order-detail-stage"></dd>
                 </div>
+                <div class="order-detail-item">
+                    <dt>Forma de pagamento</dt>
+                    <dd id="order-detail-payment"></dd>
+                </div>
             </dl>
 
             <div class="order-detail-item">
@@ -586,4 +628,193 @@ function ordersPage() {
         `;
     lucide.createIcons();
     initOrdersPage();
+}
+
+function financePage() {
+    removeClasses()
+    financeLink.classList.add("active")
+
+    content.innerHTML = `
+<header class="page-header">
+    <div>
+        <h1>Financeiro</h1>
+        <p>Receitas, despesas e lucro da V3D. Pedidos concluídos entram aqui automaticamente.</p>
+    </div>
+
+    <button type="button" class="btn-primary" id="new-finance-entry">
+        <i data-lucide="plus"></i>
+        Novo lançamento
+    </button>
+</header>
+
+<!-- Indicadores do período -->
+<section class="stats-grid">
+    <div class="stat-card finance-income-card">
+        <div class="stat-info">
+            <span>Receitas</span>
+            <h2 id="finance-income">R$ 0,00</h2>
+        </div>
+        <div class="stat-icon"><i data-lucide="trending-up"></i></div>
+    </div>
+
+    <div class="stat-card finance-expense-card">
+        <div class="stat-info">
+            <span>Despesas</span>
+            <h2 id="finance-expense">R$ 0,00</h2>
+        </div>
+        <div class="stat-icon"><i data-lucide="trending-down"></i></div>
+    </div>
+
+    <div class="stat-card finance-profit-card" id="finance-profit-card">
+        <div class="stat-info">
+            <span>Lucro</span>
+            <h2 id="finance-profit">R$ 0,00</h2>
+        </div>
+        <div class="stat-icon"><i data-lucide="wallet"></i></div>
+    </div>
+</section>
+
+<!-- Lançamentos -->
+<section class="products-section">
+    <div class="section-header">
+        <div>
+            <h2>Lançamentos</h2>
+            <p>Entradas e saídas do período selecionado.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="search-box">
+            <i data-lucide="search"></i>
+            <input type="search" id="finance-search" placeholder="Buscar lançamentos...">
+        </div>
+
+        <select id="finance-period" aria-label="Período">
+            <option value="month">Este mês</option>
+            <option value="last-month">Mês passado</option>
+            <option value="year">Este ano</option>
+            <option value="all">Todo o período</option>
+        </select>
+
+        <select id="finance-type-filter" aria-label="Tipo de lançamento">
+            <option value="">Receitas e despesas</option>
+            <option value="receita">Só receitas</option>
+            <option value="despesa">Só despesas</option>
+        </select>
+    </div>
+
+    <div id="finance-list"></div>
+
+    <div class="table-footer">
+        <span id="finance-count">0 lançamentos</span>
+    </div>
+</section>
+
+<section class="products-section">
+<div class="section-header"><div><h2>Parcelas dos pedidos</h2><p>Acompanhe os pagamentos dos pedidos no crédito, desde a criação. A receita entra no Financeiro quando o pedido é concluído.</p></div></div>
+<div id="finance-order-installments" aria-live="polite"></div>
+</section>
+<div class="modal-overlay" id="installments-modal" hidden>
+  <div class="product-modal" role="dialog" aria-modal="true" aria-label="Gerenciar parcelas">
+    <div class="modal-header"><div><h2>Gerenciar parcelas</h2><p></p></div><button type="button" class="icon-button" data-close-installments aria-label="Fechar"><i data-lucide="x"></i></button></div>
+    <div class="form-body" id="installments-list"></div>
+  </div>
+</div>
+<!-- Modal de novo / editar lançamento -->
+<div class="modal-overlay" id="finance-modal" hidden>
+    <div class="product-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
+
+        <div class="modal-header">
+            <div>
+                <h2 id="finance-modal-title">Novo lançamento</h2>
+                <p>Registre uma despesa ou uma receita avulsa.</p>
+            </div>
+            <button type="button" class="icon-button" data-close-modal aria-label="Fechar">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <form id="finance-form">
+            <div class="form-body">
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="finance-type">Tipo *</label>
+                        <select id="finance-type" required>
+                            <option value="despesa">Despesa</option>
+                            <option value="receita">Receita</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="finance-category">Categoria *</label>
+                        <select id="finance-category" required></select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="finance-description">Descrição *</label>
+                    <input type="text" id="finance-description" placeholder="Ex: Filamento PLA preto 1kg"
+                        required maxlength="255" autocomplete="off">
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="finance-amount">Valor (R$) *</label>
+                        <input type="number" id="finance-amount" min="0.01" step="0.01" placeholder="0,00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="finance-date">Data *</label>
+                        <input type="date" id="finance-date" required>
+                    </div>
+                </div>
+
+                <div class="form-group" id="finance-payment-group" hidden>
+                    <label for="finance-payment">Forma de pagamento</label>
+                    <select id="finance-payment">${paymentOptionsHtml}</select>
+                </div>
+
+                <div class="form-group" id="finance-installments-group" hidden>
+                    <label for="finance-installments">Parcelas</label>
+                    <select id="finance-installments">${installmentsOptionsHtml}</select>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" data-close-modal>Cancelar</button>
+                <button type="submit" class="btn-primary">
+                    <i data-lucide="check"></i>
+                    Salvar lançamento
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal de confirmação de exclusão -->
+<div class="modal-overlay" id="finance-delete-modal" hidden>
+    <div class="product-modal confirm-modal" role="alertdialog" aria-modal="true"
+        aria-labelledby="finance-delete-title" aria-describedby="finance-delete-text">
+
+        <div class="confirm-body">
+            <div class="confirm-icon">
+                <i data-lucide="trash-2"></i>
+            </div>
+            <h2 id="finance-delete-title">Excluir lançamento?</h2>
+            <p id="finance-delete-text">Essa ação não pode ser desfeita. O valor deixa de contar no resumo.</p>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn-cancel" data-close-modal>Cancelar</button>
+            <button type="button" class="btn-danger" id="confirm-finance-delete">
+                <i data-lucide="trash-2"></i>
+                Excluir
+            </button>
+        </div>
+    </div>
+</div>
+    `;
+    lucide.createIcons();
+    initFinancePage(); // definida no finance.js
 }

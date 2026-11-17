@@ -272,6 +272,7 @@ main h1 {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px;
+  margin-bottom: 14px;
 }
 
 .section-header {
@@ -1407,6 +1408,131 @@ main h1 {
 }
 
 /* ============================================================
+   Financeiro
+   ============================================================ */
+
+/* Despesa e lucro negativo usam o mesmo vermelho do restante do painel */
+.finance-expense-card .stat-icon,
+.finance-profit-card.is-negative .stat-icon {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.finance-profit-card.is-negative h2 {
+  color: #B91C1C;
+}
+
+[data-theme="dark"] .finance-expense-card .stat-icon,
+[data-theme="dark"] .finance-profit-card.is-negative .stat-icon {
+  background: #450A0A;
+  color: #FCA5A5;
+}
+
+[data-theme="dark"] .finance-profit-card.is-negative h2 {
+  color: #FCA5A5;
+}
+
+/* Dígitos de largura fixa: o valor não "treme" enquanto o número conta */
+#finance-income,
+#finance-expense,
+#finance-profit {
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-table {
+  min-width: 640px;
+}
+
+.finance-th-amount,
+.finance-amount {
+  text-align: right;
+}
+
+.finance-desc {
+  display: inline-block;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Selo dos lançamentos criados pelos pedidos */
+.finance-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.finance-auto svg {
+  width: 12px;
+  height: 12px;
+}
+
+.finance-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-amount.income {
+  color: var(--primary);
+}
+
+.finance-amount.expense {
+  color: #B91C1C;
+}
+
+[data-theme="dark"] .finance-amount.expense {
+  color: #FCA5A5;
+}
+
+.finance-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.finance-actions button,
+.finance-locked {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.finance-actions button {
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.finance-actions .finance-edit:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.finance-actions .finance-delete:hover {
+  color: #B91C1C;
+  border-color: #B91C1C;
+}
+
+.finance-actions svg,
+.finance-locked svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ============================================================
    Animações de entrada
    ============================================================ */
 
@@ -1741,4 +1867,189 @@ main h1 {
   .page-header h1 {
     font-size: 22px;
   }
+}
+/* Campo escondido (o display:flex do .form-group anularia o atributo hidden) */
+.form-group[hidden] {
+  display: none;
+}
+/* Controle de parcelas */
+.order-installments-btn { width: 100%; margin: 10px 0; cursor: pointer; }
+
+/* Modal "Gerenciar parcelas" */
+#installments-modal .product-modal { max-width: 520px; }
+#installments-modal .form-body { gap: 12px; }
+
+.inst-summary {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  margin-bottom: 4px;
+}
+.inst-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.inst-stats div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.inst-stats span { font-size: 12px; color: var(--text-muted); }
+.inst-stats strong { font-family: "Outfit", sans-serif; font-size: 18px; }
+.inst-stats strong.is-paid { color: var(--primary); }
+.inst-progress { height: 8px; margin-top: 14px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.inst-progress div { height: 100%; border-radius: 999px; background: var(--primary); transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+.installment-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid #D97706;
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 0.2s, background 0.2s;
+}
+.installment-row.is-paid { border-color: var(--primary); background: var(--primary-light); }
+.inst-check { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.inst-check input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+.inst-info { display: flex; flex-direction: column; gap: 2px; }
+.inst-info strong { font-size: 14px; }
+.inst-info small { font-size: 13px; color: var(--text-muted); }
+.inst-date { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.inst-date span { font-size: 11px; color: var(--text-muted); }
+.installment-row input[type="date"] { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); max-width: 150px; font-family: inherit; }
+@media (max-width: 520px) {
+  .inst-stats { grid-template-columns: 1fr 1fr; }
+  .installment-row { flex-wrap: wrap; }
+  .inst-date { align-items: flex-start; width: 100%; }
+  .installment-row input[type="date"] { max-width: none; width: 100%; }
+}
+
+/* Selo de situação da parcela (verde = paga, laranja = pendente, azul = parcial) */
+.pay-badge {
+  --pay-color: #D97706;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--pay-color);
+  color: var(--pay-color);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pay-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pay-color); }
+.pay-badge[data-state="paid"]    { --pay-color: var(--primary); }
+.pay-badge[data-state="partial"] { --pay-color: #2563EB; }
+.pay-badge[data-state="pending"] { --pay-color: #D97706; }
+.inst-check .pay-badge { margin-left: 4px; }
+/* ============================================================
+   Financeiro: responsividade
+   ============================================================ */
+
+/* Valores grandes não estouram o card (3 colunas em telas médias) */
+.stat-info { min-width: 0; }
+.stat-info h2 { overflow-wrap: anywhere; }
+.stat-icon { flex-shrink: 0; }
+
+/* Títulos longos do modal quebram em vez de empurrar o botão de fechar */
+.modal-header > div { min-width: 0; }
+.modal-header h2,
+.modal-header p { overflow-wrap: anywhere; }
+.modal-header .icon-button { flex-shrink: 0; margin-left: 12px; }
+.inst-check { flex-wrap: wrap; }
+
+/* Tabelas viram cartões em telas estreitas */
+@media (max-width: 760px) {
+  .finance-table { min-width: 0; }
+  .products-table.table-cards { white-space: normal; }
+
+  .table-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .table-cards,
+  .table-cards tbody { display: block; width: 100%; }
+
+  .table-cards tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .products-table.table-cards tbody tr:hover { background: var(--surface); }
+
+  .table-cards td {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    font-size: 13px;
+  }
+
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Linha de cima: título à esquerda, valor / situação à direita */
+  .table-cards td.cell-title {
+    grid-column: 1;
+    grid-row: 1;
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .table-cards td.cell-amount {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    font-size: 15px;
+  }
+
+  .finance-desc {
+    display: block;
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+
+  .finance-auto { margin: 6px 0 0; }
+
+  /* Rodapé do cartão: ações */
+  .table-cards td.cell-actions {
+    justify-content: flex-end;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .finance-actions button,
+  .finance-locked { width: 38px; height: 38px; }
+
+  .table-cards .order-installments-btn {
+    width: 100%;
+    margin: 0;
+    padding: 11px 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .products-section { padding: 14px; }
+  .table-cards tr { padding: 12px; }
+  .inst-stats { grid-template-columns: 1fr; }
 }
