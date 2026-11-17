@@ -460,76 +460,231 @@ function initOrdersDragAndDrop() {
     });
 }
 
-/* ---------- Orçamento em PDF ---------- */
-function exportOrderQuotePDF(order) {
-    const jsPDF = window.jspdf?.jsPDF;
-    if (!jsPDF) {
-        alert("A biblioteca de PDF não carregou. Verifique a conexão com a internet e tente novamente.");
+/* ---------- Proposta comercial: PDF desenhado em código (identidade V3D) ---------- */
+
+async function exportOrderQuotePDF(order) {
+    const PDFLib = window.PDFLib;
+    if (!PDFLib) {
+        alert("Não foi possível carregar a biblioteca PDF. Verifique a internet e tente novamente.");
         return false;
     }
 
-    const pdf = new jsPDF({ unit: "mm", format: "a4" });
-    const green = [63, 125, 14];
-    const money = (value) => value == null ? "A combinar" : formatPrice(value);
-    const date = new Date().toLocaleDateString("pt-BR");
-    const number = order.number != null ? formatOrderNumber(order.number) : (order.id != null ? `#${order.id}` : "");
-    const line = (label, value, y) => {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(10);
-        pdf.setTextColor(95, 105, 95);
-        pdf.text(label, 18, y);
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(25, 30, 25);
-        const wrapped = pdf.splitTextToSize(String(value ?? "—"), 115);
-        pdf.text(wrapped, 77, y);
-        return y + Math.max(11, wrapped.length * 6 + 4);
-    };
+    try {
+        const { PDFDocument, StandardFonts, rgb } = PDFLib;
+        const pdf = await PDFDocument.create();
+        const page = pdf.addPage([595.28, 841.89]); // A4
+        const font = await pdf.embedFont(StandardFonts.Helvetica);
+        const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+        const W = page.getWidth();
+        const H = page.getHeight();
+        const M = 40; // margem lateral
 
-    pdf.setFillColor(...green);
-    pdf.rect(0, 0, 210, 38, "F");
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(24);
-    pdf.text("V3D", 18, 19);
-    pdf.setFontSize(11);
-    pdf.text("ORÇAMENTO", 18, 29);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(date, 192, 19, { align: "right" });
-    if (number) pdf.text(`Pedido ${number}`, 192, 29, { align: "right" });
+        // Paleta V3D
+        const ink = rgb(0.063, 0.071, 0.063);      // #101210
+        const lime = rgb(0.604, 0.953, 0.271);     // #9AF345
+        const green = rgb(0.247, 0.490, 0.055);    // #3F7D0E
+        const greenSoft = rgb(0.890, 0.961, 0.800); // #E3F5CC
+        const muted = rgb(0.357, 0.392, 0.345);    // #5B6458
+        const line = rgb(0.867, 0.882, 0.839);     // #DDE1D6
+        const paper = rgb(0.965, 0.969, 0.945);    // #F6F7F1
+        const white = rgb(1, 1, 1);
 
-    let y = 54;
-    y = line("Cliente", order.customer, y);
-    y = line("Produto", order.product, y);
-    y = line("Quantidade", order.quantity || 1, y);
-    if (order.deadline) {
-        const d = parseDeadline(order.deadline);
-        y = line("Prazo de entrega", d ? d.toLocaleDateString("pt-BR") : order.deadline, y);
-    }
-    if (order.payment_method) {
-        y = line("Pagamento", paymentDescription(order.payment_method, order.installments), y);
-    }
-    if (order.notes) {
-        y = line("Observações", order.notes, y);
-    }
-    y += 6;
-    pdf.setDrawColor(210, 220, 205);
-    pdf.line(18, y, 192, y);
-    y += 15;
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(...green);
-    pdf.setFontSize(12);
-    pdf.text("VALOR TOTAL", 18, y);
-    pdf.setFontSize(18);
-    pdf.text(money(order.price), 192, y, { align: "right" });
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.setTextColor(100, 105, 100);
-    pdf.text("Orçamento emitido pela V3D. Condições sujeitas a confirmação.", 18, 278);
+        const clean = (value, fallback = "-") => String(value == null || value === "" ? fallback : value)
+            .replace(/[\u0000-\u001f\u007f]/g, " ")
+            .replace(/[‐-―]/g, "-")
+            .replace(/[‘’]/g, "'")
+            .replace(/[“”]/g, '"')
+            .replace(/[^ -ÿ•]/g, "")
+            .replace(/\s+/g, " ").trim();
+        const money = (n) => n == null || n === "" ? "A combinar" :
+            Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        const dateOnly = (value) => {
+            if (!value) return "Não informada";
+            const parts = String(value).slice(0, 10).split("-");
+            return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : clean(value);
+        };
+        const dateCreated = order.created_at || order.createdAt;
+        const emissionDate = dateCreated && !Number.isNaN(new Date(dateCreated).getTime())
+            ? new Date(dateCreated).toLocaleDateString("pt-BR", { timeZone: "America/Maceio" })
+            : new Date().toLocaleDateString("pt-BR");
 
-    const safeName = String(order.customer || "cliente").normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 50);
-    pdf.save(`orcamento-v3d-${safeName}${number ? `-${number.replace("#", "")}` : ""}.pdf`);
-    return true;
+        // Coordenadas medidas a partir do TOPO da página.
+        const rect = (x, top, w, h, color, border) => page.drawRectangle({
+            x, y: H - top - h, width: w, height: h, color,
+            ...(border ? { borderColor: border, borderWidth: 0.8 } : {}),
+        });
+
+        const text = (value, x, top, opts = {}) => {
+            const f = opts.bold ? bold : font;
+            const maxWidth = opts.maxWidth;
+            let size = opts.size || 9;
+            let str = clean(value, opts.fallback);
+            if (maxWidth) {
+                while (size > (opts.minSize || 6.5) && f.widthOfTextAtSize(str, size) > maxWidth) size -= 0.25;
+                if (f.widthOfTextAtSize(str, size) > maxWidth) {
+                    while (str.length && f.widthOfTextAtSize(`${str}...`, size) > maxWidth) str = str.slice(0, -1);
+                    str += "...";
+                }
+            }
+            const w = f.widthOfTextAtSize(str, size);
+            const px = opts.align === "right" ? x - w : opts.align === "center" ? x - w / 2 : x;
+            page.drawText(str, { x: px, y: H - top - size * 0.8, font: f, size, color: opts.color || ink });
+            return size;
+        };
+
+        // Quebra de linha para textos longos
+        const wrap = (value, size, maxWidth) => {
+            const words = clean(value, "").split(" ").filter(Boolean);
+            const lines = [];
+            let current = "";
+            words.forEach((word) => {
+                const test = current ? `${current} ${word}` : word;
+                if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
+                    lines.push(current);
+                    current = word;
+                } else {
+                    current = test;
+                }
+            });
+            if (current) lines.push(current);
+            return lines;
+        };
+
+        const label = (value, x, top) => text(String(value).toUpperCase(), x, top, { size: 7, bold: true, color: muted });
+
+        const status = ORDER_STATUSES.find((item) => item.value === order.status)?.label || "Aguardando";
+        const qty = Math.max(1, Number(order.quantity) || 1);
+        const total = order.price == null || order.price === "" ? null : Number(order.price);
+        const unit = total == null ? null : total / qty;
+        const number = order.number != null ? formatOrderNumber(order.number) :
+            (order.id != null ? `#${order.id}` : "-");
+        const installments = order.payment_method === "credito"
+            ? `${Math.max(1, Number(order.installments) || 1)}x`
+            : "À vista";
+
+        /* ---------- Cabeçalho ---------- */
+        rect(0, 0, W, 128, ink);
+        rect(0, 128, W, 4, lime);
+
+        // Logo oficial V3D: arquivo disponível em assets/logo-v3d-proposta.png.
+        // O PNG possui fundo transparente, preservando o cabeçalho escuro.
+        const logoResponse = await fetch("assets/logo-v3d-proposta.png");
+        if (!logoResponse.ok) throw new Error("Logo da proposta não encontrado em assets/logo-v3d-proposta.png");
+        const logoBytes = await logoResponse.arrayBuffer();
+        const logo = await pdf.embedPng(logoBytes);
+        const logoDimensions = logo.scaleToFit(120, 114);
+        page.drawImage(logo, {
+            x: M,
+            y: H - 7 - logoDimensions.height,
+            width: logoDimensions.width,
+            height: logoDimensions.height,
+        });
+
+        text("PROPOSTA COMERCIAL", W - M, 42, { size: 15, bold: true, color: white, align: "right" });
+        text(`Pedido ${number}`, W - M, 66, { size: 10, color: lime, bold: true, align: "right" });
+        text(`Emitida em ${emissionDate}`, W - M, 82, { size: 9, color: rgb(0.62, 0.64, 0.61), align: "right" });
+
+        /* ---------- Cliente ---------- */
+        let y = 156;
+        rect(M, y, W - M * 2, 62, paper, line);
+        rect(M, y, 4, 62, green);
+        label("Cliente", M + 20, y + 14);
+        text(order.customer, M + 20, y + 28, { size: 14, bold: true, maxWidth: 300 });
+        label("Status do pedido", W - M - 150, y + 14);
+        rect(W - M - 150, y + 28, 130, 20, greenSoft);
+        text(status, W - M - 85, y + 33, { size: 9, bold: true, color: green, align: "center" });
+
+        /* ---------- Tabela de itens ---------- */
+        y = 246;
+        text("Itens da proposta", M, y, { size: 12, bold: true });
+
+        const tableTop = y + 24;
+        const tableW = W - M * 2;
+        const cols = {
+            n: M + 14,
+            desc: M + 48,
+            qty: M + tableW - 190,
+            unit: M + tableW - 105,
+            total: M + tableW - 14,
+        };
+        rect(M, tableTop, tableW, 26, ink);
+        const th = { size: 7.5, bold: true, color: lime };
+        text("ITEM", cols.n, tableTop + 9, th);
+        text("DESCRIÇÃO", cols.desc, tableTop + 9, th);
+        text("QTD.", cols.qty, tableTop + 9, { ...th, align: "center" });
+        text("VALOR UNIT.", cols.unit, tableTop + 9, { ...th, align: "right" });
+        text("TOTAL", cols.total, tableTop + 9, { ...th, align: "right" });
+
+        const rowTop = tableTop + 26;
+        rect(M, rowTop, tableW, 38, white, line);
+        text("01", cols.n, rowTop + 14, { size: 9, color: muted, bold: true });
+        text(order.product, cols.desc, rowTop + 14, { size: 10, bold: true, maxWidth: cols.qty - cols.desc - 30 });
+        text(qty, cols.qty, rowTop + 14, { size: 10, align: "center" });
+        text(money(unit), cols.unit, rowTop + 14, { size: 9.5, align: "right" });
+        text(money(total), cols.total, rowTop + 14, { size: 9.5, bold: true, align: "right", maxWidth: 80 });
+
+        /* ---------- Total ---------- */
+        const totalTop = rowTop + 54;
+        const boxW = 230;
+        rect(W - M - boxW, totalTop, boxW, 56, ink);
+        rect(W - M - boxW, totalTop, 5, 56, lime);
+        text("VALOR TOTAL", W - M - boxW + 22, totalTop + 12, { size: 7.5, bold: true, color: rgb(0.62, 0.64, 0.61) });
+        text(money(total), W - M - 16, totalTop + 27, {
+            size: 20, minSize: 12, bold: true, color: lime, align: "right", maxWidth: boxW - 40,
+        });
+
+        /* ---------- Observações ---------- */
+        let cursor = totalTop + 56;
+        if (order.notes) {
+            cursor += 26;
+            text("Observações", M, cursor, { size: 12, bold: true });
+            const lines = wrap(order.notes, 9, W - M * 2 - 28).slice(0, 5);
+            const boxH = lines.length * 13 + 22;
+            rect(M, cursor + 22, W - M * 2, boxH, paper, line);
+            lines.forEach((l, i) => text(l, M + 14, cursor + 33 + i * 13, { size: 9, color: muted }));
+            cursor += 22 + boxH;
+        }
+
+        /* ---------- Condições comerciais ---------- */
+        const terms = [
+            "Alterações solicitadas após o início da produção poderão gerar custos adicionais.",
+            "Peças produzidas por impressão 3D podem apresentar pequenas variações de acabamento.",
+            "Esta proposta está sujeita à confirmação de disponibilidade de materiais.",
+        ];
+        const termsTop = Math.max(cursor + 28, 515);
+        text("Condições comerciais", M, termsTop, { size: 12, bold: true });
+        rect(M, termsTop + 20, W - M * 2, 1, line);
+        terms.forEach((term, i) => {
+            rect(M, termsTop + 35 + i * 20, 5, 5, lime);
+            text(term, M + 16, termsTop + 32 + i * 20, { size: 8.5, color: muted, maxWidth: W - M * 2 - 16 });
+        });
+
+        /* ---------- Rodapé ---------- */
+        rect(0, H - 44, W, 44, ink);
+        rect(0, H - 47, W, 3, lime);
+        text("Obrigado pela preferência!", M, H - 29, { size: 9, bold: true, color: white });
+        text("V3D Impressão 3D  |  site-v3d.vercel.app", W - M, H - 29, {
+            size: 8.5, color: rgb(0.62, 0.64, 0.61), align: "right",
+        });
+
+        const pdfBytes = await pdf.save();
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        const safeName = clean(order.customer, "cliente").normalize("NFD")
+            .replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 45);
+        anchor.href = blobUrl;
+        anchor.download = `proposta-v3d-${number.replace(/[^0-9]/g, "") || "pedido"}-${safeName}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return true;
+    } catch (error) {
+        console.error("Erro ao exportar proposta:", error);
+        alert("Não foi possível gerar a proposta.");
+        return false;
+    }
 }
 
 /* ---------- Modais: novo pedido e exclusão ---------- */
@@ -570,8 +725,14 @@ function initOrderModals() {
     document.addEventListener("keydown", ordersEscHandler);
 
     quoteNo?.addEventListener("click", () => closeModal(quoteModal));
-    quoteYes?.addEventListener("click", () => {
-        if (quoteOrder && exportOrderQuotePDF(quoteOrder)) closeModal(quoteModal);
+    quoteYes?.addEventListener("click", async () => {
+        if (!quoteOrder || quoteYes.disabled) return;
+        quoteYes.disabled = true;
+        try {
+            if (await exportOrderQuotePDF(quoteOrder)) closeModal(quoteModal);
+        } finally {
+            quoteYes.disabled = false;
+        }
     });
 
     initProductPicker();
