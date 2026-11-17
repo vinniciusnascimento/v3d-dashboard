@@ -276,5 +276,44 @@ router.delete("/orders/:id", async (req, res) => {
     }
 });
 
+// Imagens
+
+router.get('/produtos/:id/imagem', async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            `SELECT mime, data
+             FROM product_images
+             WHERE product_id = ?
+             LIMIT 1`,
+            [req.params.id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                error: "Imagem não encontrada"
+            });
+        }
+
+        const image = rows[0];
+
+        const buffer = Buffer.isBuffer(image.data)
+            ? image.data
+            : Buffer.from(image.data);
+
+        res.status(200);
+        res.setHeader("Content-Type", image.mime || "image/webp");
+        res.setHeader("Content-Length", buffer.length);
+
+        return res.end(buffer);
+
+    } catch (error) {
+        console.error("Erro ao buscar imagem:", error);
+
+        return res.status(500).json({
+            error: "Erro ao carregar imagem"
+        });
+    }
+});
+
 
 export default router;
