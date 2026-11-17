@@ -134,7 +134,7 @@ function renderFinanceList() {
     } else {
         list.innerHTML = `
             <div class="table-wrapper">
-                <table class="products-table finance-table">
+                <table class="products-table table-cards finance-table">
                     <thead>
                         <tr>
                             <th>Data</th>
@@ -176,19 +176,19 @@ function createFinanceRow(entry) {
 
     return `
         <tr>
-            <td>${formatFinanceDate(entry.entry_date)}</td>
-            <td>
+            <td data-label="Data">${formatFinanceDate(entry.entry_date)}</td>
+            <td class="cell-title">
                 <span class="finance-desc" title="${escapeHtml(entry.description)}">${escapeHtml(entry.description)}</span>
                 ${fromOrder
             ? `<span class="finance-auto" title="Lançado automaticamente ao concluir o pedido"><i data-lucide="zap"></i>Automático</span>`
             : ""}
             </td>
-            <td>${escapeHtml(entry.category)}</td>
-            <td>${isIncome && entry.payment_method ? escapeHtml(paymentDescription(entry.payment_method, entry.installments)) : "—"}</td>
-            <td class="finance-amount ${isIncome ? "income" : "expense"}">
+            <td data-label="Categoria">${escapeHtml(entry.category)}</td>
+            <td data-label="Pagamento">${isIncome && entry.payment_method ? escapeHtml(paymentDescription(entry.payment_method, entry.installments)) : "—"}</td>
+            <td class="finance-amount cell-amount ${isIncome ? "income" : "expense"}">
                 ${isIncome ? "+" : "−"} ${formatMoney(entry.amount)}
             </td>
-            <td><div class="finance-actions">${actions}</div></td>
+            <td class="cell-actions"><div class="finance-actions">${actions}</div></td>
         </tr>
     `;
 }
@@ -464,8 +464,8 @@ async function loadFinanceInstallmentOrders(quiet = false) {
         }));
         if (!container.isConnected) return;
 
-        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
-            '<tr><td>' + formatOrderNumber(order.number) + '</td><td>' + escapeHtml(order.customer) + '</td><td>' + installmentBadge(order.installmentsPaid, order.installmentsTotal) + '</td><td>' + formatMoney(order.price) + '</td><td>' + order.installmentsTotal + 'x</td><td><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
+        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table table-cards installments-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
+            '<tr><td data-label="Pedido">' + formatOrderNumber(order.number) + '</td><td class="cell-title">' + escapeHtml(order.customer) + '</td><td class="cell-amount">' + installmentBadge(order.installmentsPaid, order.installmentsTotal) + '</td><td data-label="Total">' + formatMoney(order.price) + '</td><td data-label="Parcelas">' + order.installmentsTotal + 'x</td><td class="cell-actions"><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
         ).join('') + '</tbody></table></div>' : '<p class="products-empty">Nenhum pedido no crédito encontrado.</p>';
     } catch (error) {
         if (container.isConnected) container.textContent = error.message;

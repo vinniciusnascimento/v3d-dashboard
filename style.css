@@ -1938,3 +1938,118 @@ main h1 {
 .pay-badge[data-state="partial"] { --pay-color: #2563EB; }
 .pay-badge[data-state="pending"] { --pay-color: #D97706; }
 .inst-check .pay-badge { margin-left: 4px; }
+/* ============================================================
+   Financeiro: responsividade
+   ============================================================ */
+
+/* Valores grandes não estouram o card (3 colunas em telas médias) */
+.stat-info { min-width: 0; }
+.stat-info h2 { overflow-wrap: anywhere; }
+.stat-icon { flex-shrink: 0; }
+
+/* Títulos longos do modal quebram em vez de empurrar o botão de fechar */
+.modal-header > div { min-width: 0; }
+.modal-header h2,
+.modal-header p { overflow-wrap: anywhere; }
+.modal-header .icon-button { flex-shrink: 0; margin-left: 12px; }
+.inst-check { flex-wrap: wrap; }
+
+/* Tabelas viram cartões em telas estreitas */
+@media (max-width: 760px) {
+  .finance-table { min-width: 0; }
+  .products-table.table-cards { white-space: normal; }
+
+  .table-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .table-cards,
+  .table-cards tbody { display: block; width: 100%; }
+
+  .table-cards tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .products-table.table-cards tbody tr:hover { background: var(--surface); }
+
+  .table-cards td {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    font-size: 13px;
+  }
+
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Linha de cima: título à esquerda, valor / situação à direita */
+  .table-cards td.cell-title {
+    grid-column: 1;
+    grid-row: 1;
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .table-cards td.cell-amount {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    font-size: 15px;
+  }
+
+  .finance-desc {
+    display: block;
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+
+  .finance-auto { margin: 6px 0 0; }
+
+  /* Rodapé do cartão: ações */
+  .table-cards td.cell-actions {
+    justify-content: flex-end;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .finance-actions button,
+  .finance-locked { width: 38px; height: 38px; }
+
+  .table-cards .order-installments-btn {
+    width: 100%;
+    margin: 0;
+    padding: 11px 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .products-section { padding: 14px; }
+  .table-cards tr { padding: 12px; }
+  .inst-stats { grid-template-columns: 1fr; }
+}
