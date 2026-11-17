@@ -1120,12 +1120,43 @@ main {
     color: var(--text-muted);
 }
 
+.order-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin: -4px -6px -4px 0;
+}
+
+.order-edit {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.order-edit:hover {
+    background: var(--nav-hover);
+    color: var(--primary);
+}
+
+.order-edit svg {
+    width: 15px;
+    height: 15px;
+}
+
 .order-delete {
     display: grid;
     place-items: center;
     width: 28px;
     height: 28px;
-    margin: -4px -6px -4px 0;
+    margin: 0;
     padding: 0;
     border: none;
     border-radius: 6px;
@@ -1247,6 +1278,121 @@ main {
 
 .order-card {
     user-select: auto;
+}
+
+/* Card clicável */
+.order-card {
+    cursor: pointer;
+}
+
+.order-card:active {
+    cursor: grabbing;
+}
+
+/* Modal de detalhes do pedido */
+.order-detail-modal {
+    max-width: 560px;
+}
+
+.order-detail-number {
+    display: block;
+    margin-bottom: 4px;
+    font-family: "Outfit", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.order-detail-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.order-detail-badge {
+    --status-color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--status-color);
+    color: var(--status-color);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.order-detail-badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-color);
+}
+
+.order-detail-badge[data-status="aguardando"]  { --status-color: #D97706; }
+.order-detail-badge[data-status="imprimindo"]  { --status-color: #2563EB; }
+.order-detail-badge[data-status="finalizacao"] { --status-color: #7C3AED; }
+.order-detail-badge[data-status="concluido"]   { --status-color: var(--primary); }
+
+.order-detail-overdue {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #DC2626;
+}
+
+.order-detail-overdue[hidden] {
+    display: none;
+}
+
+.order-detail-overdue svg {
+    width: 14px;
+    height: 14px;
+}
+
+.order-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 16px;
+}
+
+.order-detail-item dt {
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.order-detail-item dd {
+    font-size: 15px;
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.order-detail-notes {
+    padding: 12px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.order-detail-notes.is-empty {
+    color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+    .order-detail-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ===== Animações de entrada ===== */
