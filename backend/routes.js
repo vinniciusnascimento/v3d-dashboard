@@ -5,7 +5,8 @@ import financeRouter, {
     garantirTabelaFinanceiro,
     sincronizarReceitas,
     desvincularReceita,
-    normalizarPagamento
+    normalizarPagamento,
+    normalizarParcelas
 } from './finance.js';
 
 const router = express.Router();
@@ -179,11 +180,16 @@ router.get("/orders", async (req, res) => {
 
 router.post("/orders", async (req, res) => {
     try {
-        const { customer, product, quantity, price, deadline, notes, payment_method } = req.body;
+        const { customer, product, quantity, price, deadline, notes, payment_method, installments } = req.body;
 
         const pagamento = normalizarPagamento(payment_method);
         if (pagamento === undefined) {
             return res.status(400).json({ erro: "Forma de pagamento inválida" });
+        }
+
+        const parcelas = normalizarParcelas(pagamento, installments);
+        if (parcelas === undefined) {
+            return res.status(400).json({ erro: "Número de parcelas inválido (use de 1 a 12)" });
         }
 
         if (!customer || !product) {
@@ -205,8 +211,8 @@ router.post("/orders", async (req, res) => {
 
         const [result] = await db.query(
             `INSERT INTO orders
-                (number, customer, product, quantity, price, status, deadline, notes, position, payment_method)
-             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?)`,
+                (number, customer, product, quantity, price, status, deadline, notes, position, payment_method, installments)
+             VALUES (?, ?, ?, ?, ?, 'aguardando', ?, ?, ?, ?, ?)`,
             [
                 nextNumber,
                 customer,
@@ -216,7 +222,8 @@ router.post("/orders", async (req, res) => {
                 deadline || null,
                 notes || null,
                 nextPosition,
-                pagamento
+                pagamento,
+                parcelas
             ]
         );
 
@@ -282,11 +289,16 @@ router.put("/orders/:id", async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
-        const { customer, product, quantity, price, deadline, notes, payment_method } = req.body;
+        const { customer, product, quantity, price, deadline, notes, payment_method, installments } = req.body;
 
         const pagamento = normalizarPagamento(payment_method);
         if (pagamento === undefined) {
             return res.status(400).json({ erro: "Forma de pagamento inválida" });
+        }
+
+        const parcelas = normalizarParcelas(pagamento, installments);
+        if (parcelas === undefined) {
+            return res.status(400).json({ erro: "Número de parcelas inválido (use de 1 a 12)" });
         }
 
         if (!customer || !product) {
@@ -303,9 +315,9 @@ router.put("/orders/:id", async (req, res) => {
         const [result] = await conn.query(
             `UPDATE orders
                 SET customer = ?, product = ?, quantity = ?, price = ?,
-                    deadline = ?, notes = ?, payment_method = ?
+                    deadline = ?, notes = ?, payment_method = ?, installments = ?
               WHERE id = ?`,
-            [customer, product, quantity || 1, price ?? null, deadline || null, notes || null, pagamento, id]
+            [customer, product, quantity || 1, price ?? null, deadline || null, notes || null, pagamento, parcelas, id]
         );
 
         if (result.affectedRows === 0) {

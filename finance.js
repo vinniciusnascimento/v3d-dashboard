@@ -184,7 +184,7 @@ function createFinanceRow(entry) {
             : ""}
             </td>
             <td>${escapeHtml(entry.category)}</td>
-            <td>${isIncome && entry.payment_method ? escapeHtml(paymentLabel(entry.payment_method)) : "—"}</td>
+            <td>${isIncome && entry.payment_method ? escapeHtml(paymentDescription(entry.payment_method, entry.installments)) : "—"}</td>
             <td class="finance-amount ${isIncome ? "income" : "expense"}">
                 ${isIncome ? "+" : "−"} ${formatMoney(entry.amount)}
             </td>
@@ -260,11 +260,15 @@ function initFinanceModals() {
     const paymentInput = document.getElementById("finance-payment");
     const paymentGroup = document.getElementById("finance-payment-group");
 
+    const installmentsInput = document.getElementById("finance-installments");
+    const syncInstallments = bindInstallments(paymentInput, installmentsInput);
+
     // Forma de pagamento só aparece para receitas
     function syncPayment() {
         const isIncome = typeInput.value === "receita";
         paymentGroup.hidden = !isIncome;
         if (!isIncome) paymentInput.value = "";
+        syncInstallments();
     }
 
     const closeModal = (target) => { target.hidden = true; };
@@ -346,6 +350,7 @@ function initFinanceModals() {
             fillCategories(entry.type, entry.category);
             paymentInput.value = entry.payment_method ?? "";
             syncPayment();
+            installmentsInput.value = entry.installments || 1;
 
             modal.hidden = false;
             descriptionInput.focus();
@@ -370,6 +375,9 @@ function initFinanceModals() {
             entry_date: dateInput.value,
             category: categoryInput.value,
             payment_method: typeInput.value === "receita" ? (paymentInput.value || null) : null,
+            installments: typeInput.value === "receita" && paymentInput.value === "credito"
+                ? Number(installmentsInput.value) || null
+                : null,
         };
 
         submitBtn.disabled = true;

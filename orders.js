@@ -64,6 +64,31 @@ function paymentLabel(value) {
     return method ? method.label : "";
 }
 
+// "Cartão de crédito em 3x" (parcelas só contam no crédito)
+function paymentDescription(method, installments) {
+    const label = paymentLabel(method);
+    const count = Number(installments);
+
+    return label && method === "credito" && count > 1 ? `${label} em ${count}x` : label;
+}
+
+// Mostra o campo "Parcelas" só quando a forma de pagamento é cartão de crédito.
+// Devolve a função de sincronização (chame depois de preencher o formulário por código).
+function bindInstallments(paymentSelect, installmentsSelect) {
+    const group = installmentsSelect.closest(".form-group");
+
+    const sync = () => {
+        const show = paymentSelect.value === "credito";
+        group.hidden = !show;
+        if (!show) installmentsSelect.value = "1";
+    };
+
+    paymentSelect.addEventListener("change", sync);
+    sync();
+
+    return sync;
+}
+
 /* ---------- Card ---------- */
 
 function createOrderCard(order, isNew = false) {
@@ -470,9 +495,15 @@ function initOrderModals() {
 
     initProductPicker();
 
+    const syncNewInstallments = bindInstallments(
+        document.getElementById("order-payment"),
+        document.getElementById("order-installments")
+    );
+
     /* Novo pedido */
     newOrderBtn.addEventListener("click", () => {
         orderForm.reset();
+        syncNewInstallments();
         document.getElementById("picker-panel").hidden = true;
         orderModal.hidden = false;
         document.getElementById("order-customer").focus();
@@ -493,6 +524,9 @@ function initOrderModals() {
             deadline: deadline || null,
             notes: document.getElementById("order-notes").value.trim(),
             payment_method: document.getElementById("order-payment").value || null,
+            installments: document.getElementById("order-payment").value === "credito"
+                ? Number(document.getElementById("order-installments").value) || null
+                : null,
         };
 
         submitBtn.disabled = true;
@@ -567,6 +601,8 @@ function initOrderEditModal() {
     const deadline = document.getElementById("edit-order-deadline");
     const notes = document.getElementById("edit-order-notes");
     const payment = document.getElementById("edit-order-payment");
+    const installments = document.getElementById("edit-order-installments");
+    const syncInstallments = bindInstallments(payment, installments);
     const title = document.getElementById("order-edit-title");
 
     const closeModal = () => { modal.hidden = true; };
@@ -605,6 +641,8 @@ function initOrderEditModal() {
         deadline.value = order.deadline ? String(order.deadline).slice(0, 10) : "";
         notes.value = order.notes ?? "";
         payment.value = order.payment_method ?? "";
+        syncInstallments();
+        installments.value = order.installments || 1;
 
         modal.hidden = false;
         customer.focus();
@@ -626,6 +664,7 @@ function initOrderEditModal() {
             deadline: deadline.value || null,
             notes: notes.value.trim(),
             payment_method: payment.value || null,
+            installments: payment.value === "credito" ? Number(installments.value) || null : null,
         };
 
         submitBtn.disabled = true;
@@ -682,7 +721,7 @@ function openOrderDetail(id) {
         ? deadline.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })
         : "Sem prazo");
     setText("order-detail-stage", statusLabel);
-    setText("order-detail-payment", paymentLabel(order.payment_method) || "Não informada");
+    setText("order-detail-payment", paymentDescription(order.payment_method, order.installments) || "Não informada");
     setText("order-detail-status", statusLabel);
 
     const notes = document.getElementById("order-detail-notes");

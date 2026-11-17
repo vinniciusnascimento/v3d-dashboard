@@ -24,6 +24,18 @@ export function normalizarPagamento(valor) {
     return PAGAMENTOS.includes(valor) ? valor : undefined;
 }
 
+// Parcelamento só existe no cartão de crédito (2 a 12x). À vista / vazio = null,
+// fora do intervalo = undefined (inválido).
+export function normalizarParcelas(pagamento, valor) {
+    if (pagamento !== 'credito') return null;
+    if (valor === undefined || valor === null || valor === '') return null;
+
+    const parcelas = Number(valor);
+    if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 12) return undefined;
+
+    return parcelas > 1 ? parcelas : null;
+}
+
 /* ---------- Tabela ---------- */
 
 // O projeto não tem script de migração, então a tabela se cria sozinha
@@ -60,6 +72,10 @@ export function garantirTabelaFinanceiro() {
             // Forma de pagamento (opcional) nos lançamentos e nos pedidos
             await garantirColuna('finance_entries', 'payment_method', 'VARCHAR(20) NULL');
             await garantirColuna('orders', 'payment_method', 'VARCHAR(20) NULL');
+
+            // Número de parcelas (cartão de crédito)
+            await garantirColuna('finance_entries', 'installments', 'TINYINT UNSIGNED NULL');
+            await garantirColuna('orders', 'installments', 'TINYINT UNSIGNED NULL');
         })().catch((erro) => {
             tabelaPronta = null; // tenta de novo na próxima chamada
             throw erro;
@@ -105,7 +121,7 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
     if (!ids.length) return;
 
     const [pedidos] = await conn.query(
-        'SELECT id, number, customer, product, quantity, price, status, payment_method FROM orders WHERE id IN (?)',
+        'SELECT id, number, customer, product, quantity, price, status, payment_method, installments FROM orders WHERE id IN (?)',
         [ids]
     );
 
@@ -121,14 +137,14 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
         }
 
         const reescrever = atualizar
-            ? 'amount = VALUES(amount), description = VALUES(description), payment_method = VALUES(payment_method)'
+            ? 'amount = VALUES(amount), description = VALUES(description), payment_method = VALUES(payment_method), installments = VALUES(installments)'
             : 'id = id';
 
         await conn.query(
-            `INSERT INTO finance_entries (type, description, category, amount, entry_date, order_id, payment_method)
-             VALUES ('receita', ?, 'Pedidos', ?, ?, ?, ?)
+            `INSERT INTO finance_entries (type, description, category, amount, entry_date, order_id, payment_method, installments)
+             VALUES ('receita', ?, 'Pedidos', ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE ${reescrever}`,
-            [descricaoDoPedido(pedido), arredondar(valor), hoje, pedido.id, pedido.payment_method || null]
+            [descricaoDoPedido(pedido), arredondar(valor), hoje, pedido.id, pedido.payment_method || null, pedido.installments || null]
         );
     }
 }
@@ -165,7 +181,10 @@ function lerLancamento(body = {}) {
     // Forma de pagamento só faz sentido para receitas
     const payment_method = type === 'receita' ? pagamento : null;
 
-    return { valores: { type, description, category, amount, entry_date, payment_method } };
+    const parcelas = normalizarParcelas(payment_method, body.installments);
+    if (parcelas === undefined) return { erro: 'Número de parcelas inválido (use de 1 a 12)' };
+
+    return { valores: { type, description, category, amount, entry_date, payment_method, installments: parcelas } };
 }
 
 /* ---------- Rotas (montadas em /api/finance) ---------- */
@@ -194,7 +213,7 @@ router.get('/', async (req, res) => {
         const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
 
         const [rows] = await db.query(
-            `SELECT id, type, description, category, amount, payment_method,
+            `SELECT id, type, description, category, amount, payment_method, installments,
                     DATE_FORMAT(entry_date, '%Y-%m-%d') AS entry_date, order_id
                FROM finance_entries
                ${where}
@@ -232,9 +251,9 @@ router.post('/', async (req, res) => {
         await garantirTabelaFinanceiro();
 
         const [result] = await db.query(
-            `INSERT INTO finance_entries (type, description, category, amount, entry_date, payment_method)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method]
+            `INSERT INTO finance_entries (type, description, category, amount, entry_date, payment_method, installments)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method, valores.installments]
         );
 
         res.status(201).json({ id: result.insertId });
@@ -266,9 +285,9 @@ router.put('/:id', async (req, res) => {
 
         await db.query(
             `UPDATE finance_entries
-                SET type = ?, description = ?, category = ?, amount = ?, entry_date = ?, payment_method = ?
+                SET type = ?, description = ?, category = ?, amount = ?, entry_date = ?, payment_method = ?, installments = ?
               WHERE id = ?`,
-            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method, req.params.id]
+            [valores.type, valores.description, valores.category, valores.amount, valores.entry_date, valores.payment_method, valores.installments, req.params.id]
         );
 
         res.json({ message: 'Lançamento atualizado' });

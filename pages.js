@@ -5,6 +5,11 @@ const productsLink = document.querySelector(".linkProducts")
 const ordersLink = document.querySelector(".linkOrders")
 const financeLink = document.querySelector(".linkFinance")
 
+// Parcelas do cartão de crédito (1x = à vista)
+const installmentsOptionsHtml = Array.from({ length: 12 }, (_, i) =>
+    `<option value="${i + 1}">${i === 0 ? "À vista (1x)" : `${i + 1}x`}</option>`
+).join("");
+
 // Opções de forma de pagamento (opcional: a primeira opção é vazia)
 const paymentOptionsHtml = `<option value="">Não informada</option>` + [
     ["pix", "Pix"],
@@ -435,6 +440,11 @@ function ordersPage() {
                     </div>
                 </div>
 
+                <div class="form-group" hidden>
+                    <label for="order-installments">Parcelas</label>
+                    <select id="order-installments">${installmentsOptionsHtml}</select>
+                </div>
+
                 <div class="form-group">
                     <label for="order-notes">Observações</label>
                     <textarea id="order-notes" rows="3" maxlength="500"
@@ -526,6 +536,11 @@ function ordersPage() {
                         <label for="edit-order-payment">Forma de pagamento</label>
                         <select id="edit-order-payment">${paymentOptionsHtml}</select>
                     </div>
+                </div>
+
+                <div class="form-group" hidden>
+                    <label for="edit-order-installments">Parcelas</label>
+                    <select id="edit-order-installments">${installmentsOptionsHtml}</select>
                 </div>
 
                 <div class="form-group">
@@ -748,6 +763,11 @@ function financePage() {
                 <div class="form-group" id="finance-payment-group" hidden>
                     <label for="finance-payment">Forma de pagamento</label>
                     <select id="finance-payment">${paymentOptionsHtml}</select>
+                </div>
+
+                <div class="form-group" id="finance-installments-group" hidden>
+                    <label for="finance-installments">Parcelas</label>
+                    <select id="finance-installments">${installmentsOptionsHtml}</select>
                 </div>
             </div>
 
