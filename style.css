@@ -2053,3 +2053,16 @@ main h1 {
   .table-cards tr { padding: 12px; }
   .inst-stats { grid-template-columns: 1fr; }
 }
+/* Múltiplos produtos por pedido */
+.order-add-line {display:grid;grid-template-columns:90px minmax(120px,1fr) auto;gap:10px;margin-top:10px;align-items:center}
+.order-add-line input {min-width:0;width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+.order-add-line .btn-cancel {display:flex;align-items:center;gap:6px}
+.order-items {display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.order-item-row {display:grid;grid-template-columns:minmax(120px,1fr) 75px 105px minmax(80px,auto) 34px;align-items:center;gap:9px;padding:12px;background:var(--background);border:1px solid var(--border);border-radius:9px}
+.order-item-name {font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.order-item-row label {display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)}
+.order-item-row input {width:100%;min-width:0;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)}
+.order-item-subtotal {font-size:12px;text-align:right;font-weight:600}
+.order-item-remove {background:transparent;border:0;color:#dc2626;cursor:pointer;padding:6px}
+.order-product span {line-height:1.6}
+@media(max-width:620px){.order-add-line {grid-template-columns:72px minmax(0,1fr)}.order-add-line button {grid-column:1/-1}.order-item-row{grid-template-columns:minmax(0,1fr) 65px 90px 32px}.order-item-name{grid-column:1/-1}.order-item-subtotal{grid-column:1/4;text-align:left}.order-item-remove{grid-column:4;grid-row:2}}
