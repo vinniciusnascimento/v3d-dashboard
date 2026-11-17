@@ -3,7 +3,7 @@
    Depende de: app.js (escapeHtml, formatPrice, API_URL) e lucide
    ============================================================ */
 
-const ORDERS_API_URL = "/api/orders";
+const ORDERS_API_URL = "http://localhost:5000/api/orders";
 
 let allOrders = [];
 let draggedCard = null;

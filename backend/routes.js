@@ -1,8 +1,16 @@
 import express from 'express';
 import db from './db.js';
 import multer from 'multer';
+import financeRouter, {
+    garantirTabelaFinanceiro,
+    sincronizarReceitas,
+    desvincularReceita
+} from './finance.js';
 
 const router = express.Router();
+
+// /finance
+router.use('/finance', financeRouter);
 
 // /produtos
 
@@ -218,8 +226,12 @@ router.put("/orders/reordenar", async (req, res) => {
         return res.status(400).json({ erro: "Dados inválidos" });
     }
 
-    const conn = await db.getConnection();
+    let conn;
     try {
+        // Antes da transação: criar tabela é DDL e encerraria a transação
+        await garantirTabelaFinanceiro();
+
+        conn = await db.getConnection();
         await conn.beginTransaction();
 
         for (let i = 0; i < ids.length; i++) {
@@ -229,10 +241,16 @@ router.put("/orders/reordenar", async (req, res) => {
             );
         }
 
+        // Pedido que chega em "concluido" vira receita no Financeiro;
+        // se sai de "concluido", a receita dele é desfeita.
+        await sincronizarReceitas(conn, ids);
+
         await conn.commit();
         res.json({ ok: true });
     } catch (erro) {
-        console.error("ERRO PUT PRODUTOS:", {
+        if (conn) await conn.rollback().catch(() => { });
+
+        console.error("ERRO PUT REORDENAR:", {
             message: erro.message,
             code: erro.code,
             sqlMessage: erro.sqlMessage,
@@ -240,16 +258,67 @@ router.put("/orders/reordenar", async (req, res) => {
         });
 
         res.status(500).json({
-            erro: "Erro ao atualizar produto",
+            erro: "Erro ao atualizar pedido",
             codigo: erro.code || null,
             mensagem: erro.sqlMessage || erro.message
         });
+    } finally {
+        // Sem isso a conexão nunca volta ao pool (limite de 5)
+        if (conn) conn.release();
+    }
+});
+
+router.put("/orders/:id", async (req, res) => {
+    let conn;
+    try {
+        const { id } = req.params;
+        const { customer, product, quantity, price, deadline, notes } = req.body;
+
+        if (!customer || !product) {
+            return res.status(400).json({
+                erro: "Cliente e produto são obrigatórios"
+            });
+        }
+
+        await garantirTabelaFinanceiro();
+
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+
+        const [result] = await conn.query(
+            `UPDATE orders
+                SET customer = ?, product = ?, quantity = ?, price = ?,
+                    deadline = ?, notes = ?
+              WHERE id = ?`,
+            [customer, product, quantity || 1, price ?? null, deadline || null, notes || null, id]
+        );
+
+        if (result.affectedRows === 0) {
+            await conn.rollback();
+            return res.status(404).json({ erro: "Pedido não encontrado" });
+        }
+
+        // Pedido já concluído: o valor da receita acompanha a edição
+        await sincronizarReceitas(conn, [id], { atualizar: true });
+
+        await conn.commit();
+        res.json({ message: "Pedido atualizado" });
+    } catch (erro) {
+        if (conn) await conn.rollback().catch(() => { });
+
+        console.error(erro);
+        res.status(500).json({ erro: "Erro ao atualizar pedido" });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
 router.delete("/orders/:id", async (req, res) => {
     try {
         const { id } = req.params;
+
+        // A receita de um pedido concluído continua no Financeiro
+        await desvincularReceita(id);
 
         const [result] = await db.query(
             `DELETE FROM orders
