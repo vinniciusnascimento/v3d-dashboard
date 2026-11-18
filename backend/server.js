@@ -1,6 +1,7 @@
 import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import routes from './routes.js';
+import catalog from './catalog.js';
 import db from './db.js';
 import { auth, hasSession, requireSameOrigin, requireSession } from './auth.js';
 
@@ -26,6 +27,7 @@ app.get(['/', '/index.html'], noStore, async (req, res) => {
 
 app.use('/api', noStore, requireSameOrigin);
 app.use('/api/auth', auth, (req, res) => res.sendStatus(404));
+app.use('/api', catalog);
 app.use('/api', requireSession, express.json(), routes);
 
 if (!process.env.VERCEL) {
