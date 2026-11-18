@@ -718,7 +718,12 @@ function financePage() {
     <div id="finance-list"></div>
 
     <div class="table-footer">
-        <span id="finance-count">0 lançamentos</span>
+        <span id="finance-count" role="status">0 lançamentos</span>
+        <nav id="finance-pagination" class="finance-pagination" aria-label="Páginas dos lançamentos" hidden>
+            <button type="button" class="btn-cancel" id="finance-previous-page" data-page-step="-1" disabled>Anterior</button>
+            <span id="finance-page-status" role="status"></span>
+            <button type="button" class="btn-cancel" id="finance-next-page" data-page-step="1">Próxima</button>
+        </nav>
     </div>
 </section>
 

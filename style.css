@@ -1503,6 +1503,25 @@ main h1 {
   color: #FCA5A5;
 }
 
+#finance-list + .table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.finance-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.finance-pagination[hidden] { display: none; }
+.finance-pagination button { margin: 0; }
+.finance-pagination button:disabled { opacity: 0.5; cursor: default; }
+
 .finance-actions {
   display: flex;
   justify-content: flex-end;
