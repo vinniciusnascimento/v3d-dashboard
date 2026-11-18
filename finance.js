@@ -22,6 +22,8 @@ const FINANCE_CATEGORIES = {
 };
 
 let financeEntries = [];
+const FINANCE_PAGE_SIZE = 10;
+let financeCurrentPage = 1;
 let financeRequestId = 0;   // descarta respostas antigas se o período mudar no meio
 let financeEscHandler = null;
 
@@ -129,6 +131,11 @@ function renderFinanceList() {
         return matchType && matchTerm;
     });
 
+    const totalPages = Math.max(1, Math.ceil(entries.length / FINANCE_PAGE_SIZE));
+    financeCurrentPage = Math.min(financeCurrentPage, totalPages);
+    const start = (financeCurrentPage - 1) * FINANCE_PAGE_SIZE;
+    const pageEntries = entries.slice(start, start + FINANCE_PAGE_SIZE);
+
     if (!entries.length) {
         list.innerHTML = `<p class="products-empty">Nenhum lançamento encontrado.</p>`;
     } else {
@@ -146,7 +153,7 @@ function renderFinanceList() {
                         </tr>
                     </thead>
                     <tbody>
-                        ${entries.map(createFinanceRow).join("")}
+                        ${pageEntries.map(createFinanceRow).join("")}
                     </tbody>
                 </table>
             </div>
@@ -154,7 +161,14 @@ function renderFinanceList() {
     }
 
     document.getElementById("finance-count").textContent =
-        `${entries.length} ${entries.length === 1 ? "lançamento" : "lançamentos"}`;
+        entries.length
+            ? `${start + 1}–${start + pageEntries.length} de ${entries.length} ${entries.length === 1 ? "lançamento" : "lançamentos"}`
+            : "0 lançamentos";
+
+    document.getElementById("finance-pagination").hidden = entries.length <= FINANCE_PAGE_SIZE;
+    document.getElementById("finance-page-status").textContent = `Página ${financeCurrentPage} de ${totalPages}`;
+    document.getElementById("finance-previous-page").disabled = financeCurrentPage === 1;
+    document.getElementById("finance-next-page").disabled = financeCurrentPage === totalPages;
 
     lucide.createIcons();
 }
@@ -217,6 +231,8 @@ async function loadFinance() {
         console.error("Erro ao carregar financeiro:", erro);
 
         if (requestId === financeRequestId && document.getElementById("finance-list")) {
+            document.getElementById("finance-pagination").hidden = true;
+            document.getElementById("finance-count").textContent = "";
             document.getElementById("finance-list").innerHTML =
                 `<p class="products-empty">Não foi possível carregar o financeiro.</p>`;
         }
@@ -227,10 +243,16 @@ async function loadFinance() {
 
 function initFinanceFilters() {
     // O período muda o que vem do servidor; tipo e busca só filtram a lista
-    document.getElementById("finance-period").addEventListener("change", loadFinance);
+    document.getElementById("finance-period").addEventListener("change", () => {
+        financeCurrentPage = 1;
+        loadFinance();
+    });
 
     ["finance-type-filter", "finance-search"].forEach((id) => {
-        document.getElementById(id).addEventListener("input", renderFinanceList);
+        document.getElementById(id).addEventListener("input", () => {
+            financeCurrentPage = 1;
+            renderFinanceList();
+        });
     });
 }
 
@@ -547,6 +569,15 @@ function initFinanceInstallments() {
 }
 
 function initFinancePage() {
+    financeCurrentPage = 1;
+    document.getElementById("finance-pagination").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-page-step]");
+        if (!button || button.disabled) return;
+
+        financeCurrentPage = Math.max(1, financeCurrentPage + Number(button.dataset.pageStep));
+        renderFinanceList();
+        document.getElementById(button.id).focus();
+    });
     initFinanceInstallments();
     loadFinanceInstallmentOrders();
     initFinanceFilters();
