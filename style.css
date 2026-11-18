@@ -1440,8 +1440,18 @@ main h1 {
 }
 
 .finance-table {
-  min-width: 640px;
+  table-layout: fixed;
+  white-space: normal;
 }
+
+.finance-table th:first-child { width: 96px; }
+.finance-table th:nth-child(3),
+.finance-table th:nth-child(4) { width: 16%; }
+.finance-table .finance-th-amount { width: 120px; }
+.finance-table th:last-child { width: 100px; }
+
+.finance-table td { overflow-wrap: anywhere; }
+.finance-table .finance-amount { white-space: nowrap; }
 
 .finance-th-amount,
 .finance-amount {
@@ -1956,7 +1966,6 @@ main h1 {
 
 /* Tabelas viram cartões em telas estreitas */
 @media (max-width: 760px) {
-  .finance-table { min-width: 0; }
   .products-table.table-cards { white-space: normal; }
 
   .table-cards thead {
