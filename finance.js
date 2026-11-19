@@ -487,12 +487,13 @@ function initFinanceModals() {
    ============================================================ */
 let financeInstallmentOrders = [];
 let financeInstallmentOrdersRequestId = 0;
-let installmentDetailsRequestId = 0;
 
-// Situação das parcelas: pago (todas), parcial (algumas) ou pendente (nenhuma)
-function installmentBadge(paid, total) {
-    const state = paid >= total && total > 0 ? 'paid' : paid > 0 ? 'partial' : 'pending';
-    const label = state === 'paid' ? 'Pago' : state === 'partial' ? `Parcial · ${paid}/${total}` : 'Pendente';
+function installmentBadge(summary) {
+    if (!summary) return '—';
+
+    const paid = summary.installments.length;
+    const state = !paid ? 'pending' : summary.pending === 0 ? 'paid' : 'partial';
+    const label = state === 'paid' ? 'Concluído' : paid;
     return `<span class="pay-badge" data-state="${state}">${label}</span>`;
 }
 
@@ -509,23 +510,19 @@ async function loadFinanceInstallmentOrders(quiet = false) {
         if (requestId !== financeInstallmentOrdersRequestId || !container.isConnected) return;
         const installmentOrders = orders.filter(order => order.payment_method === 'credito');
 
-        // Quantas parcelas de cada pedido já foram pagas
         await Promise.all(installmentOrders.map(async (order) => {
-            order.installmentsTotal = Number(order.installments) || 1;
-            order.installmentsPaid = 0;
             try {
-                const r = await apiFetch(`${ORDERS_API_URL}/${order.id}/installments`);
-                if (!r.ok) return;
-                const data = await r.json();
-                order.installmentsTotal = data.installments.length;
-                order.installmentsPaid = data.installments.filter(p => p.paid_at).length;
-            } catch (_) { /* mantém 0 pagas */ }
+                const response = await apiFetch(`${ORDERS_API_URL}/${order.id}/installments`);
+                if (response.ok) order.installmentSummary = await response.json();
+            } catch {
+                // Mantém o pedido disponível para tentar carregar as parcelas pelo modal.
+            }
         }));
         if (requestId !== financeInstallmentOrdersRequestId || !container.isConnected) return;
 
         financeInstallmentOrders = installmentOrders;
-        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table table-cards installments-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
-            '<tr><td data-label="Pedido">' + formatOrderNumber(order.number) + '</td><td class="cell-title">' + escapeHtml(order.customer) + '</td><td class="cell-amount">' + installmentBadge(order.installmentsPaid, order.installmentsTotal) + '</td><td data-label="Total">' + formatMoney(order.price) + '</td><td data-label="Parcelas">' + order.installmentsTotal + 'x</td><td class="cell-actions"><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
+        container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table table-cards installments-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas previstas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
+            '<tr><td data-label="Pedido">' + formatOrderNumber(order.number) + '</td><td class="cell-title">' + escapeHtml(order.customer) + '</td><td class="cell-amount">' + installmentBadge(order.installmentSummary) + '</td><td data-label="Total">' + formatMoney(order.price) + '</td><td data-label="Parcelas previstas">' + (Number(order.installments) || 1) + 'x</td><td class="cell-actions"><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
         ).join('') + '</tbody></table></div>' : '<p class="products-empty">Nenhum pedido no crédito encontrado.</p>';
     } catch (error) {
         if (requestId === financeInstallmentOrdersRequestId && container.isConnected) {
@@ -537,95 +534,188 @@ async function loadFinanceInstallmentOrders(quiet = false) {
         }
     }
 }
+function renderInstallmentPayments(list, summary) {
+    const { installments, received, pending, total } = summary;
+    const progress = total > 0 ? Math.min(100, Math.round(received / total * 100)) : 0;
+    list.innerHTML = `
+        <div class="inst-summary">
+            <div class="inst-stats">
+                <div><span>Recebido</span><strong class="is-paid">${formatMoney(received)}</strong></div>
+                <div><span>Pendente</span><strong>${formatMoney(pending)}</strong></div>
+                <div><span>Parcelas pagas</span><strong>${installments.length}</strong></div>
+            </div>
+            <div class="inst-progress" role="progressbar" aria-label="Percentual do pedido recebido"
+                aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><div style="width:${progress}%"></div></div>
+        </div>
+        <div class="installment-toolbar">
+            <button type="button" class="btn-primary" data-create-installment ${pending > 0 ? '' : 'disabled'}>
+                Criar parcela
+            </button>
+            ${total <= 0 ? '<p>Informe o valor do pedido para criar parcelas.</p>' : ''}
+        </div>
+        <form id="installment-form" class="installment-form" hidden>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="installment-amount">Valor pago (R$)</label>
+                    <input type="number" id="installment-amount" name="amount" min="0.01" step="0.01" inputmode="decimal" required>
+                </div>
+                <div class="form-group">
+                    <label for="installment-paid-at">Data do pagamento</label>
+                    <input type="date" id="installment-paid-at" name="paid_at" required>
+                </div>
+            </div>
+            <p class="auth-status" role="alert" hidden></p>
+            <div class="installment-actions">
+                <button type="button" class="btn-danger" data-remove-installment hidden>Remover parcela</button>
+                <button type="button" class="btn-cancel" data-cancel-installment>Cancelar</button>
+                <button type="submit" class="btn-primary">Salvar parcela</button>
+            </div>
+        </form>
+        ${installments.map(({ number, amount, paid_at }) => `
+            <div class="installment-row">
+                <div class="inst-info">
+                    <strong>${number}ª parcela · ${formatMoney(amount)}</strong>
+                    <small>Pago em ${formatFinanceDate(paid_at)}</small>
+                </div>
+                <button type="button" class="btn-cancel" data-edit-installment="${number}"
+                    aria-label="Editar parcela ${number}">Editar</button>
+            </div>`).join('') || '<p class="installments-empty">Nenhuma parcela registrada.</p>'}
+    `;
+}
+
 function initFinanceInstallments() {
     const board = document.getElementById('finance-order-installments');
-    if (!board) return;
+    const modal = document.getElementById('installments-modal');
+    const list = document.getElementById('installments-list');
+    let session = 0;
+
+    function close() { modal.hidden = true; }
+    modal.querySelector('[data-close-installments]').onclick = close;
+    modal.onclick = (event) => { if (event.target === modal) close(); };
+
     board.addEventListener('click', async (event) => {
-        const btn = event.target.closest('.order-installments-btn');
-        if (!btn) return;
-        event.stopPropagation();
-        const modal = document.getElementById('installments-modal');
-        const list = document.getElementById('installments-list');
-        const id = btn.dataset.id;
-        const order = financeInstallmentOrders.find(o => String(o.id) === String(id));
+        const button = event.target.closest('.order-installments-btn');
+        if (!button) return;
+
+        const order = financeInstallmentOrders.find(({ id }) => String(id) === button.dataset.id);
+        if (!order) return;
+
+        const current = ++session;
+        const isOpen = () => current === session && !modal.hidden && list.isConnected;
+        const url = `${ORDERS_API_URL}/${order.id}/installments`;
+        let summary;
         let saving = false;
+        let editing = null;
+        let trigger;
+
         modal.querySelector('h2').textContent = `Parcelas do pedido ${formatOrderNumber(order.number)}`;
         modal.querySelector('.modal-header p').textContent = `${order.customer} · ${order.product}`;
         modal.hidden = false;
-        const refresh = async () => {
-            if (modal.hidden || !list.isConnected) return;
 
-            const requestId = ++installmentDetailsRequestId;
+        async function refresh(notice = '') {
+            if (!isOpen()) return;
+
             const row = `<div class="installment-row" aria-hidden="true">
-                ${skeletonLine("skeleton-short")}
-                ${skeletonLine("skeleton-short")}
+                ${skeletonLine("skeleton-short")}${skeletonLine("skeleton-short")}
             </div>`;
-
             showSkeleton(list, row.repeat(3));
-            try {
-                const response = await apiFetch(`${ORDERS_API_URL}/${id}/installments`);
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.erro || 'Erro ao carregar');
-                if (requestId !== installmentDetailsRequestId || !list.isConnected) return;
 
-                const paid = data.installments.filter(p => p.paid_at);
-                const received = paid.reduce((v,p) => v + p.amount, 0);
-                const total = data.installments.length;
-                const pending = Math.max(0, Number(order.price || 0) - received);
-                const pct = total ? Math.round((paid.length / total) * 100) : 0;
-                list.innerHTML = `<div class="inst-summary">
-                        <div class="inst-stats">
-                            <div><span>Recebido</span><strong class="is-paid">${formatPrice(received)}</strong></div>
-                            <div><span>Pendente</span><strong>${formatPrice(pending)}</strong></div>
-                            <div><span>Parcelas pagas</span><strong>${paid.length}/${total}</strong></div>
-                        </div>
-                        <div class="inst-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
-                    </div>` +
-                    data.installments.map(p => `<div class="installment-row${p.paid_at ? ' is-paid' : ''}">
-                        <label class="inst-check">
-                            <input type="checkbox" data-number="${p.number}" ${p.paid_at ? 'checked' : ''}>
-                            <span class="inst-info"><strong>${p.number}ª parcela</strong><small>${formatPrice(p.amount)}</small></span>
-                            <span class="pay-badge" data-state="${p.paid_at ? 'paid' : 'pending'}">${p.paid_at ? 'Paga' : 'Pendente'}</span>
-                        </label>
-                        <div class="inst-date">
-                            <span>${p.paid_at ? 'Pago em' : 'Data do pagamento'}</span>
-                            <input type="date" data-date="${p.number}" value="${p.paid_at || localInstallmentDate()}" aria-label="Data da parcela ${p.number}">
-                        </div>
-                    </div>`).join('');
-                lucide.createIcons();
+            try {
+                const response = await apiFetch(url);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.erro || 'Não foi possível carregar as parcelas.');
+                if (!isOpen()) return;
+
+                summary = data;
+                renderInstallmentPayments(list, summary);
+                if (notice) {
+                    const message = document.createElement('p');
+                    message.className = 'auth-status';
+                    message.setAttribute('role', 'alert');
+                    message.textContent = notice;
+                    list.prepend(message);
+                }
             } catch (error) {
-                if (requestId === installmentDetailsRequestId && list.isConnected) {
-                    list.textContent = error.message;
+                if (isOpen()) list.textContent = error.message;
+            } finally {
+                if (current === session) list.removeAttribute('aria-busy');
+            }
+        }
+
+        async function save(form, remove = false) {
+            if (saving) return;
+
+            saving = true;
+            const controls = [...form.elements];
+            controls.forEach((control) => { control.disabled = true; });
+            const message = form.querySelector('[role="alert"]');
+            message.hidden = true;
+
+            try {
+                const data = remove ? { paid: false } : {
+                    paid: true,
+                    number: editing?.number ?? summary.next_number,
+                    amount: form.elements.amount.value,
+                    paid_at: form.elements.paid_at.value
+                };
+                const response = await apiFetch(editing ? `${url}/${editing.number}` : url, {
+                    method: editing ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.status === 409 || response.status === 404) {
+                    const error = await readFinanceError(response, 'Não foi possível salvar a parcela.');
+                    await refresh(error);
+                    loadFinanceInstallmentOrders(true);
+                    return;
+                }
+                if (!response.ok) throw new Error(await readFinanceError(response, 'Não foi possível salvar a parcela.'));
+
+                await refresh();
+                if (board.isConnected) {
+                    loadFinance();
+                    loadFinanceInstallmentOrders(true);
+                }
+            } catch (error) {
+                if (isOpen()) {
+                    message.textContent = error.message;
+                    message.hidden = false;
                 }
             } finally {
-                if (requestId === installmentDetailsRequestId && list.isConnected) {
-                    list.removeAttribute("aria-busy");
-                }
+                saving = false;
+                controls.forEach((control) => { control.disabled = false; });
+            }
+        }
+
+        list.onclick = (event) => {
+            const action = event.target.closest('button');
+            const form = list.querySelector('#installment-form');
+            if (!action || !form || saving) return;
+
+            if (action.matches('[data-cancel-installment]')) {
+                form.hidden = true;
+                trigger.focus();
+            } else if (action.matches('[data-remove-installment]')) {
+                save(form, true);
+            } else if (action.matches('[data-create-installment], [data-edit-installment]')) {
+                trigger = action;
+                editing = summary.installments.find(({ number }) => number === Number(action.dataset.editInstallment));
+                const amount = form.elements.amount;
+                amount.value = editing?.amount ?? '';
+                amount.max = (summary.pending + (editing?.amount ?? 0)).toFixed(2);
+                form.elements.paid_at.value = editing?.paid_at ?? localInstallmentDate();
+                form.querySelector('[data-remove-installment]').hidden = !editing;
+                form.querySelector('[role="alert"]').hidden = true;
+                form.hidden = false;
+                amount.focus();
             }
         };
-        list.onchange = async (e) => {
-            if (saving) return;
-            const input = e.target;
-            const number = input.dataset.number || input.dataset.date;
-            if (!number) return;
-            const checked = list.querySelector(`input[data-number="${number}"]`).checked;
-            const date = list.querySelector(`input[data-date="${number}"]`).value;
-            saving = true;
-            list.querySelectorAll('input').forEach(el => { el.disabled = true; });
-            try {
-                const response = await apiFetch(`${ORDERS_API_URL}/${id}/installments/${number}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paid: checked, paid_at: date })
-                });
-                if (!response.ok) throw new Error((await response.json()).erro || 'Erro ao salvar');
-            } catch (error) { alert(error.message); }
-            await refresh();
-            await loadFinance();
-            loadFinanceInstallmentOrders(true);
-            saving = false;
+
+        list.onsubmit = (event) => {
+            event.preventDefault();
+            save(event.target);
         };
-        modal.querySelector('[data-close-installments]').onclick = () => { modal.hidden = true; };
-        modal.onclick = e => { if (e.target === modal) modal.hidden = true; };
+
         await refresh();
     });
 }
