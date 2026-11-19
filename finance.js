@@ -87,6 +87,7 @@ function animateFinanceMoney(elementId, target) {
         return;
     }
 
+    element.textContent = formatMoney(from);
     const start = performance.now();
     const duration = 1000;
 
@@ -117,7 +118,7 @@ function renderFinanceSummary(summary) {
 
 function renderFinanceList() {
     const list = document.getElementById("finance-list");
-    if (!list) return;
+    if (!list || list.hasAttribute("aria-busy") || !financeEntries) return;
 
     const type = document.getElementById("finance-type-filter").value;
     const term = document.getElementById("finance-search").value.toLowerCase().trim();
@@ -207,6 +208,20 @@ function createFinanceRow(entry) {
     `;
 }
 
+function financeTableSkeleton(rows) {
+    const row = `
+        <div class="skeleton-table-row">
+            ${skeletonLine()}
+            ${skeletonLine("skeleton-medium")}
+            ${skeletonLine("skeleton-medium")}
+            ${skeletonLine("skeleton-short")}
+            ${skeletonLine()}
+            ${skeletonLine("skeleton-medium")}
+        </div>`;
+
+    return `<div aria-hidden="true">${row.repeat(rows)}</div>`;
+}
+
 async function loadFinance() {
     const requestId = ++financeRequestId;
     const list = document.getElementById("finance-list");
@@ -214,6 +229,18 @@ async function loadFinance() {
 
     const period = getFinancePeriod(document.getElementById("finance-period").value);
     const query = new URLSearchParams(period).toString();
+    const metrics = ["finance-income", "finance-expense", "finance-profit"]
+        .map((id) => document.getElementById(id));
+    const count = document.getElementById("finance-count");
+
+    metrics.forEach((metric) => {
+        const animation = financeAnimations.get(metric);
+        if (animation) cancelAnimationFrame(animation.frame);
+        showSkeleton(metric, skeletonLine("skeleton-metric"));
+    });
+    document.getElementById("finance-pagination").hidden = true;
+    showSkeleton(list, financeTableSkeleton(4));
+    count.textContent = "Carregando lançamentos…";
 
     try {
         const response = await apiFetch(`${FINANCE_API_URL}${query ? `?${query}` : ""}`);
@@ -221,20 +248,25 @@ async function loadFinance() {
 
         const data = await response.json();
 
-        // Saiu da página ou trocou o período enquanto a resposta chegava
-        if (requestId !== financeRequestId || !document.getElementById("finance-list")) return;
+        if (requestId !== financeRequestId || !list.isConnected) return;
 
         financeEntries = data.entries || [];
         renderFinanceSummary(data.summary);
+        list.removeAttribute("aria-busy");
         renderFinanceList();
     } catch (erro) {
         console.error("Erro ao carregar financeiro:", erro);
+        if (requestId !== financeRequestId || !list.isConnected) return;
 
-        if (requestId === financeRequestId && document.getElementById("finance-list")) {
-            document.getElementById("finance-pagination").hidden = true;
-            document.getElementById("finance-count").textContent = "";
-            document.getElementById("finance-list").innerHTML =
-                `<p class="products-empty">Não foi possível carregar o financeiro.</p>`;
+        financeEntries = null;
+        count.textContent = "";
+        list.innerHTML = '<p class="products-empty" role="alert">Não foi possível carregar o financeiro.</p>';
+        metrics.forEach((metric) => { metric.textContent = "—"; });
+        document.getElementById("finance-profit-card").classList.remove("is-negative");
+    } finally {
+        if (requestId === financeRequestId && list.isConnected) {
+            list.removeAttribute("aria-busy");
+            metrics.forEach((metric) => metric.removeAttribute("aria-busy"));
         }
     }
 }
@@ -454,6 +486,8 @@ function initFinanceModals() {
    (chamada no fim de financePage(), em pages.js)
    ============================================================ */
 let financeInstallmentOrders = [];
+let financeInstallmentOrdersRequestId = 0;
+let installmentDetailsRequestId = 0;
 
 // Situação das parcelas: pago (todas), parcial (algumas) ou pendente (nenhuma)
 function installmentBadge(paid, total) {
@@ -464,16 +498,19 @@ function installmentBadge(paid, total) {
 
 async function loadFinanceInstallmentOrders(quiet = false) {
     const container = document.getElementById('finance-order-installments');
-    if (!quiet) container.textContent = 'Carregando pedidos...';
+    if (!container) return;
+
+    const requestId = ++financeInstallmentOrdersRequestId;
+    if (!quiet) showSkeleton(container, financeTableSkeleton(3));
     try {
         const response = await apiFetch(ORDERS_API_URL);
         if (!response.ok) throw new Error('Não foi possível carregar os pedidos parcelados.');
         const orders = await response.json();
-        if (!container.isConnected) return;
-        financeInstallmentOrders = orders.filter(order => order.payment_method === 'credito');
+        if (requestId !== financeInstallmentOrdersRequestId || !container.isConnected) return;
+        const installmentOrders = orders.filter(order => order.payment_method === 'credito');
 
         // Quantas parcelas de cada pedido já foram pagas
-        await Promise.all(financeInstallmentOrders.map(async (order) => {
+        await Promise.all(installmentOrders.map(async (order) => {
             order.installmentsTotal = Number(order.installments) || 1;
             order.installmentsPaid = 0;
             try {
@@ -484,13 +521,20 @@ async function loadFinanceInstallmentOrders(quiet = false) {
                 order.installmentsPaid = data.installments.filter(p => p.paid_at).length;
             } catch (_) { /* mantém 0 pagas */ }
         }));
-        if (!container.isConnected) return;
+        if (requestId !== financeInstallmentOrdersRequestId || !container.isConnected) return;
 
+        financeInstallmentOrders = installmentOrders;
         container.innerHTML = financeInstallmentOrders.length ? '<div class="table-wrapper"><table class="products-table table-cards installments-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Parcelas pagas</th><th>Total</th><th>Parcelas</th><th></th></tr></thead><tbody>' + financeInstallmentOrders.map(order =>
             '<tr><td data-label="Pedido">' + formatOrderNumber(order.number) + '</td><td class="cell-title">' + escapeHtml(order.customer) + '</td><td class="cell-amount">' + installmentBadge(order.installmentsPaid, order.installmentsTotal) + '</td><td data-label="Total">' + formatMoney(order.price) + '</td><td data-label="Parcelas">' + order.installmentsTotal + 'x</td><td class="cell-actions"><button type="button" class="order-installments-btn btn-cancel" data-id="' + order.id + '">Gerenciar parcelas</button></td></tr>'
         ).join('') + '</tbody></table></div>' : '<p class="products-empty">Nenhum pedido no crédito encontrado.</p>';
     } catch (error) {
-        if (container.isConnected) container.textContent = error.message;
+        if (requestId === financeInstallmentOrdersRequestId && container.isConnected) {
+            container.textContent = error.message;
+        }
+    } finally {
+        if (requestId === financeInstallmentOrdersRequestId && container.isConnected) {
+            container.removeAttribute("aria-busy");
+        }
     }
 }
 function initFinanceInstallments() {
@@ -509,11 +553,21 @@ function initFinanceInstallments() {
         modal.querySelector('.modal-header p').textContent = `${order.customer} · ${order.product}`;
         modal.hidden = false;
         const refresh = async () => {
-            list.textContent = 'Carregando parcelas...';
+            if (modal.hidden || !list.isConnected) return;
+
+            const requestId = ++installmentDetailsRequestId;
+            const row = `<div class="installment-row" aria-hidden="true">
+                ${skeletonLine("skeleton-short")}
+                ${skeletonLine("skeleton-short")}
+            </div>`;
+
+            showSkeleton(list, row.repeat(3));
             try {
                 const response = await apiFetch(`${ORDERS_API_URL}/${id}/installments`);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.erro || 'Erro ao carregar');
+                if (requestId !== installmentDetailsRequestId || !list.isConnected) return;
+
                 const paid = data.installments.filter(p => p.paid_at);
                 const received = paid.reduce((v,p) => v + p.amount, 0);
                 const total = data.installments.length;
@@ -539,7 +593,15 @@ function initFinanceInstallments() {
                         </div>
                     </div>`).join('');
                 lucide.createIcons();
-            } catch (error) { list.textContent = error.message; }
+            } catch (error) {
+                if (requestId === installmentDetailsRequestId && list.isConnected) {
+                    list.textContent = error.message;
+                }
+            } finally {
+                if (requestId === installmentDetailsRequestId && list.isConnected) {
+                    list.removeAttribute("aria-busy");
+                }
+            }
         };
         list.onchange = async (e) => {
             if (saving) return;

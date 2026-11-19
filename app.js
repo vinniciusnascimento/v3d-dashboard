@@ -94,6 +94,7 @@ const IMAGES_PATH = "assets/products/";
 
 let productsList = null;   // recriado a cada vez que a página de produtos é exibida
 let allProducts = [];
+let productsRequestId = 0;
 let newColorsField = null; // chips de cores do cadastro
 let editColorsField = null; // chips de cores da edição
 let escHandler = null;
@@ -373,6 +374,7 @@ function updateStats(produtos) {
 }
 
 function applyFilters() {
+    if (productsList.hasAttribute("aria-busy") || !allProducts) return;
     const search = document.getElementById("search-products").value.toLowerCase().trim();
     const category = document.getElementById("category-filter").value;
 
@@ -392,22 +394,55 @@ function initFilters() {
 }
 
 async function loadProducts() {
+    const list = productsList;
+    if (!list?.isConnected) return;
+
+    const requestId = ++productsRequestId;
+    const metrics = ["total-products", "active-products", "low-stock"]
+        .map((id) => document.getElementById(id));
+    const count = document.getElementById("products-count");
+    const card = `
+        <div class="product-card skeleton-product" aria-hidden="true">
+            <div class="product-image skeleton"></div>
+            <div class="product-body">
+                ${skeletonLine("skeleton-short")}
+                ${skeletonLine("skeleton-medium")}
+                ${skeletonLine()}
+                ${skeletonLine("skeleton-short")}
+            </div>
+            <div class="product-actions">
+                ${skeletonLine()}
+                ${skeletonLine()}
+            </div>
+        </div>`;
+
+    metrics.forEach((metric) => showSkeleton(metric, skeletonLine("skeleton-metric")));
+    showSkeleton(list, card.repeat(4));
+    count.textContent = "Carregando produtos…";
+
     try {
         const resposta = await apiFetch(API_URL);
         if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
 
         const dados = await resposta.json();
+        if (requestId !== productsRequestId || !list.isConnected) return;
+
         allProducts = Array.isArray(dados) ? dados : (dados.produtos || dados.data || []);
-
-        // Se a pessoa saiu da página enquanto a resposta chegava, não há onde desenhar
-        if (!document.getElementById("products-list")) return;
-
         updateStats(allProducts);
-        applyFilters(); // respeita busca/categoria já escolhidas
+        list.removeAttribute("aria-busy");
+        applyFilters();
     } catch (erro) {
         console.error("Erro ao carregar produtos:", erro);
-        if (productsList) {
-            productsList.innerHTML = `<p class="products-empty">Não foi possível carregar os produtos.</p>`;
+        if (requestId !== productsRequestId || !list.isConnected) return;
+
+        allProducts = null;
+        list.innerHTML = '<p class="products-empty" role="alert">Não foi possível carregar os produtos.</p>';
+        count.textContent = "";
+        metrics.forEach((metric) => { metric.textContent = "—"; });
+    } finally {
+        if (requestId === productsRequestId && list.isConnected) {
+            list.removeAttribute("aria-busy");
+            metrics.forEach((metric) => metric.removeAttribute("aria-busy"));
         }
     }
 }
@@ -480,7 +515,7 @@ function initActionModals() {
     }
 
     function openEditModal(productId) {
-        const produto = allProducts.find((p) => String(p.id) === String(productId));
+        const produto = allProducts?.find((p) => String(p.id) === String(productId));
         if (!produto) return;
 
         editModal.dataset.productId = productId;

@@ -24,6 +24,15 @@ function removeClasses() {
     });
 }
 
+function showSkeleton(region, markup) {
+    region.setAttribute("aria-busy", "true");
+    region.innerHTML = markup;
+}
+
+function skeletonLine(size = "") {
+    return `<span class="skeleton skeleton-line ${size}" aria-hidden="true"></span>`;
+}
+
 const productsTemplate = `
 <header class="page-header">
     <div>
@@ -100,7 +109,7 @@ const productsTemplate = `
     </div>
 
     <div class="table-footer">
-        <span id="products-count">0 produtos encontrados</span>
+        <span id="products-count" role="status"></span>
     </div>
 
     <!-- Modal de novo produto -->
@@ -718,7 +727,7 @@ function financePage() {
     <div id="finance-list"></div>
 
     <div class="table-footer">
-        <span id="finance-count" role="status">0 lançamentos</span>
+        <span id="finance-count" role="status"></span>
         <nav id="finance-pagination" class="finance-pagination" aria-label="Páginas dos lançamentos" hidden>
             <button type="button" class="btn-cancel" id="finance-previous-page" data-page-step="-1" disabled>Anterior</button>
             <span id="finance-page-status" role="status"></span>
