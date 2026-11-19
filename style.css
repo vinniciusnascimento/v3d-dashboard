@@ -2146,3 +2146,77 @@ main h1 {
   opacity: 0.6;
   cursor: wait;
 }
+
+/* Skeletons das listas e indicadores */
+.skeleton {
+  background: linear-gradient(100deg, var(--border) 30%, var(--background) 50%, var(--border) 70%);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton-line {
+  display: inline-block;
+  width: 100%;
+  height: 0.75rem;
+  border-radius: 0.375rem;
+  vertical-align: middle;
+}
+
+.skeleton-short { width: 35%; }
+.skeleton-medium { width: 65%; }
+.skeleton-metric { width: 4em; max-width: 100%; height: 0.7em; }
+.skeleton-count { width: 0.75em; height: 0.6em; }
+
+.product-card.skeleton-product {
+  pointer-events: none;
+  animation: none;
+}
+
+.skeleton-product .product-body { gap: 12px; }
+.skeleton-product .product-actions .skeleton-line { height: 2rem; }
+
+.skeleton-order {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  min-height: 140px;
+  padding: 14px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.skeleton-table-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 54px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (max-width: 760px) {
+  .skeleton-table-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 132px;
+    margin-bottom: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .skeleton-table-row .skeleton-line:nth-child(even) { justify-self: end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--border);
+  }
+}

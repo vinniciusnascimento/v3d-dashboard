@@ -3,9 +3,10 @@
    Depende de: app.js (escapeHtml, formatPrice, API_URL) e lucide
    ============================================================ */
 
-const ORDERS_API_URL = "/api/orders";
+const ORDERS_API_URL = "http://localhost:5000/api/orders";
 
 let allOrders = [];
+let ordersRequestId = 0;
 let draggedCard = null;
 let dropped = false;
 let ordersEscHandler = null;
@@ -168,23 +169,51 @@ function renderOrders(newId = null) {
     lucide.createIcons();
 }
 
-async function loadOrders(newId = null) {
+async function loadOrders(newId = null, showLoading = false) {
+    const board = document.getElementById("orders-board");
+    if (!board) return;
+
+    const requestId = ++ordersRequestId;
+    if (showLoading) {
+        board.setAttribute("aria-busy", "true");
+        const card = `
+            <div class="skeleton-order" aria-hidden="true">
+                ${skeletonLine("skeleton-short")}
+                ${skeletonLine("skeleton-medium")}
+                ${skeletonLine()}
+                ${skeletonLine("skeleton-medium")}
+            </div>`;
+
+        board.querySelectorAll(".column-count").forEach((count) => {
+            count.innerHTML = skeletonLine("skeleton-count");
+        });
+        board.querySelectorAll(".order-list").forEach((list) => {
+            list.innerHTML = card;
+        });
+    }
+
     try {
         const response = await apiFetch(ORDERS_API_URL);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
+        if (requestId !== ordersRequestId || !board.isConnected) return;
+
         allOrders = Array.isArray(data) ? data : (data.pedidos || data.data || []);
-
-        // A pessoa pode ter saído da página enquanto a resposta chegava
-        if (!document.getElementById("orders-board")) return;
-
         renderOrders(newId);
     } catch (erro) {
         console.error("Erro ao carregar pedidos:", erro);
+        if (requestId !== ordersRequestId || !board.isConnected) return;
 
-        const board = document.getElementById("orders-board");
-        if (board) alert("Não foi possível carregar os pedidos.");
+        if (board.hasAttribute("aria-busy")) {
+            board.querySelectorAll(".column-count").forEach((count) => { count.textContent = "—"; });
+            board.querySelectorAll(".order-list").forEach((list) => {
+                list.innerHTML = '<p class="products-empty">Pedidos indisponíveis.</p>';
+            });
+        }
+        alert("Não foi possível carregar os pedidos.");
+    } finally {
+        if (requestId === ordersRequestId && board.isConnected) board.removeAttribute("aria-busy");
     }
 }
 
@@ -303,7 +332,7 @@ function initProductPicker() { return initItemsEditor(''); }
 // Busca o catálogo e prepara o seletor
 async function loadProductSuggestions() {
     try {
-        let produtos = typeof allProducts !== "undefined" ? allProducts : [];
+        let produtos = allProducts ?? [];
 
         if (!produtos.length) {
             const response = await apiFetch(API_URL);
@@ -1407,6 +1436,6 @@ function initOrdersPage() {
     initOrderDetailModal();
 
     lucide.createIcons();
-    loadOrders();
+    loadOrders(null, true);
     loadProductSuggestions();
 }
