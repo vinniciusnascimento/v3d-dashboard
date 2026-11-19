@@ -71,11 +71,18 @@ export function garantirTabelaFinanceiro() {
 
             await db.query(`CREATE TABLE IF NOT EXISTS order_installment_payments (
                 order_id INT NOT NULL,
-                installment_number TINYINT UNSIGNED NOT NULL,
+                installment_number INT UNSIGNED NOT NULL,
                 paid_at DATE NOT NULL,
                 PRIMARY KEY (order_id, installment_number),
                 KEY idx_installment_paid_at (paid_at)
             ) DEFAULT CHARSET=utf8mb4`);
+
+            // NULL preserva o valor calculado dos pagamentos gravados antes desta coluna.
+            await garantirColuna('order_installment_payments', 'amount', 'DECIMAL(10, 2) NULL');
+            const [[numeroParcela]] = await db.query("SHOW COLUMNS FROM order_installment_payments LIKE 'installment_number'");
+            if (numeroParcela.Type.startsWith('tinyint')) {
+                await db.query('ALTER TABLE order_installment_payments MODIFY installment_number INT UNSIGNED NOT NULL');
+            }
 
             // Forma de pagamento (opcional) nos lançamentos e nos pedidos
             await garantirColuna('finance_entries', 'payment_method', 'VARCHAR(20) NULL');
@@ -84,6 +91,7 @@ export function garantirTabelaFinanceiro() {
             // Número de parcelas (cartão de crédito)
             await garantirColuna('finance_entries', 'installments', 'TINYINT UNSIGNED NULL');
             await garantirColuna('orders', 'installments', 'TINYINT UNSIGNED NULL');
+            await garantirColuna('orders', 'installment_sequence', 'INT UNSIGNED NOT NULL DEFAULT 0');
         })().catch((erro) => {
             tabelaPronta = null; // tenta de novo na próxima chamada
             throw erro;
@@ -101,7 +109,7 @@ function hojeBrasil() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 }
 
-function dataValida(texto) {
+export function dataValida(texto) {
     if (typeof texto !== 'string' || !DATA_REGEX.test(texto)) return false;
 
     const data = new Date(`${texto}T00:00:00Z`);
@@ -118,6 +126,29 @@ function descricaoDoPedido(pedido) {
 }
 
 /* ---------- Ligação com os pedidos ---------- */
+
+export const centavos = (valor) => Math.round(Number(valor) * 100);
+
+export function valorParcelaPrevista(pedido, numero) {
+    const total = centavos(pedido.price);
+    const quantidade = Number(pedido.installments) || 1;
+    const base = Math.floor(total / quantidade);
+    return (base + (numero <= total % quantidade ? 1 : 0)) / 100;
+}
+
+export async function listarParcelasPagas(conn, pedido) {
+    const [pagamentos] = await conn.query(
+        `SELECT installment_number, amount, DATE_FORMAT(paid_at, '%Y-%m-%d') AS paid_at
+           FROM order_installment_payments WHERE order_id = ? ORDER BY installment_number`,
+        [pedido.id]
+    );
+
+    return pagamentos.map(({ installment_number, amount, paid_at }) => ({
+        number: installment_number,
+        amount: amount === null ? valorParcelaPrevista(pedido, installment_number) : Number(amount),
+        paid_at
+    }));
+}
 
 // Deixa o Financeiro em dia com a situação dos pedidos informados:
 //  - pedido "concluido" com valor  -> garante UMA receita dele (nunca duplica)
@@ -141,17 +172,8 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
         let valorRecebido = valor;
         let dataRecebimento = hoje;
         if (parcelado) {
-            const [pagas] = await conn.query(
-                `SELECT installment_number, DATE_FORMAT(paid_at, '%Y-%m-%d') AS paid_at
-                   FROM order_installment_payments WHERE order_id = ? ORDER BY installment_number`,
-                [pedido.id]
-            );
-            const totalCentavos = Math.round(valor * 100);
-            const quantidadeParcelas = Number(pedido.installments) || 1;
-            const base = Math.floor(totalCentavos / quantidadeParcelas);
-            const resto = totalCentavos % quantidadeParcelas;
-            const recebidos = pagas.reduce((total, p) => total + base + (p.installment_number <= resto ? 1 : 0), 0);
-            valorRecebido = recebidos / 100;
+            const pagas = await listarParcelasPagas(conn, pedido);
+            valorRecebido = pagas.reduce((total, parcela) => total + centavos(parcela.amount), 0) / 100;
             dataRecebimento = pagas.length ? pagas.map(p => p.paid_at).sort().at(-1) : hoje;
         }
         // Só pedidos concluídos entram no Financeiro. No crédito,
@@ -175,9 +197,8 @@ export async function sincronizarReceitas(conn, ids, { atualizar = false } = {})
 
 // Pedido excluído do quadro: o dinheiro já entrou, então a receita fica
 // no histórico. Ela só deixa de ser "de pedido" (vira lançamento manual).
-export async function desvincularReceita(orderId) {
-    await garantirTabelaFinanceiro();
-    await db.query('UPDATE finance_entries SET order_id = NULL WHERE order_id = ?', [orderId]);
+export async function desvincularReceita(conn, orderId) {
+    await conn.query('UPDATE finance_entries SET order_id = NULL WHERE order_id = ?', [orderId]);
 }
 
 /* ---------- Validação ---------- */

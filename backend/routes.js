@@ -6,7 +6,11 @@ import financeRouter, {
     sincronizarReceitas,
     desvincularReceita,
     normalizarPagamento,
-    normalizarParcelas
+    normalizarParcelas,
+    listarParcelasPagas,
+    valorParcelaPrevista,
+    centavos,
+    dataValida
 } from './finance.js';
 
 const router = express.Router();
@@ -254,58 +258,97 @@ router.get('/orders/:id/installments', async (req, res) => {
         await garantirTabelaFinanceiro();
         const [[order]] = await db.query('SELECT * FROM orders WHERE id = ?', [req.params.id]);
         if (!order) return res.status(404).json({ erro: 'Pedido não encontrado' });
-        if (order.payment_method !== 'credito') return res.status(400).json({ erro: 'Pedido sem parcelamento no crédito' });
-        const [payments] = await db.query(
-            "SELECT installment_number, DATE_FORMAT(paid_at, '%Y-%m-%d') AS paid_at FROM order_installment_payments WHERE order_id = ?",
-            [order.id]
-        );
-        const count = Number(order.installments) || 1;
-        const cents = Math.round(Number(order.price || 0) * 100);
-        res.json({ installments: Array.from({ length: count }, (_, index) => ({
-            number: index + 1,
-            amount: (Math.floor(cents / count) + (index < cents % count ? 1 : 0)) / 100,
-            paid_at: payments.find(p => Number(p.installment_number) === index + 1)?.paid_at || null
-        })) });
+        if (order.payment_method !== 'credito') return res.status(400).json({ erro: 'Pedido sem pagamento no crédito' });
+
+        const installments = await listarParcelasPagas(db, order);
+        const total = centavos(order.price);
+        const received = installments.reduce((sum, installment) => sum + centavos(installment.amount), 0);
+
+        const lastNumber = Math.max(order.installment_sequence, installments.at(-1)?.number ?? 0);
+        res.json({
+            installments,
+            total: total / 100,
+            received: received / 100,
+            pending: Math.max(0, total - received) / 100,
+            next_number: lastNumber + 1
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ erro: 'Erro ao carregar parcelas' });
     }
 });
 
-router.put('/orders/:id/installments/:number', async (req, res) => {
+router.post('/orders/:id/installments', (req, res) => gravarParcela(req, res, true));
+router.put('/orders/:id/installments/:number', (req, res) => gravarParcela(req, res, false));
+
+async function gravarParcela(req, res, criar) {
+    const { paid = criar ? true : undefined, paid_at, amount } = req.body || {};
+    const number = criar ? req.body?.number : Number(req.params.number);
+    if (typeof paid !== 'boolean' || (criar && !paid) || !Number.isSafeInteger(number) || number < 1) {
+        return res.status(400).json({ erro: 'Parcela ou pagamento inválido' });
+    }
+    if (paid && !dataValida(paid_at)) {
+        return res.status(400).json({ erro: 'Informe uma data de pagamento válida' });
+    }
+    if (paid && (criar || amount !== undefined)) {
+        const formatoValido = ['number', 'string'].includes(typeof amount)
+            && /^\d{1,8}(?:\.\d{1,2})?$/.test(String(amount));
+        if (!formatoValido || centavos(amount) < 1) {
+            return res.status(400).json({ erro: 'Informe um valor pago maior que zero, com até duas casas decimais' });
+        }
+    }
+
     let conn;
     try {
-        const { paid, paid_at } = req.body || {};
-        const number = Number(req.params.number);
-        if (typeof paid !== 'boolean' || !Number.isInteger(number) || number < 1) {
-            return res.status(400).json({ erro: 'Parcela ou pagamento inválido' });
-        }
-        const date = typeof paid_at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
-            ? new Date(`${paid_at}T00:00:00Z`) : null;
-        if (paid && (!date || isNaN(date) || date.toISOString().slice(0, 10) !== paid_at)) {
-            return res.status(400).json({ erro: 'Informe uma data de pagamento válida' });
-        }
         await garantirTabelaFinanceiro();
         conn = await db.getConnection();
         await conn.beginTransaction();
         const [[order]] = await conn.query('SELECT * FROM orders WHERE id = ? FOR UPDATE', [req.params.id]);
-        if (!order || order.payment_method !== 'credito' || number > (Number(order.installments) || 1)) {
+        if (!order || order.payment_method !== 'credito') {
             await conn.rollback();
-            return res.status(order ? 400 : 404).json({ erro: 'Pedido ou parcela não encontrado' });
+            return res.status(order ? 400 : 404).json({ erro: 'Pedido no crédito não encontrado' });
         }
-        if (paid && !(Number(order.price) > 0)) {
+
+        const parcelas = await listarParcelasPagas(conn, order);
+        const parcela = parcelas.find((item) => item.number === number);
+        const ultima = Math.max(order.installment_sequence, parcelas.at(-1)?.number ?? 0);
+        if (criar && number !== ultima + 1) {
             await conn.rollback();
-            return res.status(400).json({ erro: 'Informe o valor do pedido antes de registrar pagamentos' });
+            return res.status(409).json({ erro: 'As parcelas deste pedido mudaram. Confira os pagamentos antes de tentar novamente.' });
         }
+        const prevista = number <= (Number(order.installments) || 1);
+        if (!criar && paid && !parcela && (amount !== undefined || !prevista)) {
+            await conn.rollback();
+            return res.status(404).json({ erro: 'Parcela não encontrada' });
+        }
+
         if (paid) {
-            await conn.query(`INSERT INTO order_installment_payments (order_id, installment_number, paid_at)
-                VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE paid_at = VALUES(paid_at)`, [order.id, number, paid_at]);
+            const total = centavos(order.price);
+            if (total <= 0) {
+                await conn.rollback();
+                return res.status(400).json({ erro: 'Informe o valor do pedido antes de registrar pagamentos' });
+            }
+
+            const valor = centavos(amount ?? parcela?.amount ?? valorParcelaPrevista(order, number));
+            const outras = parcelas.reduce((soma, item) => item.number === number ? soma : soma + centavos(item.amount), 0);
+            if (valor < 1 || valor > total - outras) {
+                await conn.rollback();
+                return res.status(400).json({ erro: 'O valor pago deve ser positivo e caber no saldo do pedido' });
+            }
+            await conn.query(`INSERT INTO order_installment_payments (order_id, installment_number, paid_at, amount)
+                VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE paid_at = VALUES(paid_at), amount = VALUES(amount)`,
+                [order.id, number, paid_at, valor / 100]);
         } else {
             await conn.query('DELETE FROM order_installment_payments WHERE order_id = ? AND installment_number = ?', [order.id, number]);
         }
+
+        const sequencia = Math.max(ultima, paid ? number : 0);
+        if (sequencia > order.installment_sequence) {
+            await conn.query('UPDATE orders SET installment_sequence = ? WHERE id = ?', [sequencia, order.id]);
+        }
         await sincronizarReceitas(conn, [order.id], { atualizar: true });
         await conn.commit();
-        res.json({ ok: true });
+        res.status(criar ? 201 : 200).json({ ok: true });
     } catch (error) {
         if (conn) await conn.rollback().catch(() => {});
         console.error(error);
@@ -313,7 +356,7 @@ router.put('/orders/:id/installments/:number', async (req, res) => {
     } finally {
         if (conn) conn.release();
     }
-});
+}
 
 router.post("/orders", async (req, res) => {
     let conn;
@@ -444,7 +487,7 @@ router.put("/orders/:id", async (req, res) => {
             Number(price) !== Number(existing.price)
         )) {
             await conn.rollback();
-            return res.status(400).json({ erro: 'Desmarque as parcelas pagas antes de alterar o valor ou o parcelamento do pedido' });
+            return res.status(400).json({ erro: 'Remova os pagamentos antes de alterar o valor ou o parcelamento do pedido' });
         }
 
         const [result] = await conn.query(
@@ -478,36 +521,34 @@ router.put("/orders/:id", async (req, res) => {
 });
 
 router.delete("/orders/:id", async (req, res) => {
+    let conn;
     try {
         const { id } = req.params;
+        await garantirTabelaFinanceiro();
+        await garantirTabelaItens();
+        conn = await db.getConnection();
+        await conn.beginTransaction();
 
-        // A receita de um pedido concluído continua no Financeiro
-        await desvincularReceita(id);
-
-        const [result] = await db.query(
-            `DELETE FROM orders
-             WHERE id = ?`,
-            [id]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                erro: "Pedido não encontrado"
-            });
+        const [[pedido]] = await conn.query('SELECT id FROM orders WHERE id = ? FOR UPDATE', [id]);
+        if (!pedido) {
+            await conn.rollback();
+            return res.status(404).json({ erro: "Pedido não encontrado" });
         }
 
-        await garantirTabelaItens();
-        await db.query('DELETE FROM order_items WHERE order_id = ?', [id]);
-        res.json({
-            message: "Pedido excluído com sucesso"
-        });
+        // A receita de um pedido concluído continua no Financeiro.
+        await desvincularReceita(conn, id);
+        await conn.query('DELETE FROM order_installment_payments WHERE order_id = ?', [id]);
+        await conn.query('DELETE FROM order_items WHERE order_id = ?', [id]);
+        await conn.query('DELETE FROM orders WHERE id = ?', [id]);
+        await conn.commit();
 
+        res.json({ message: "Pedido excluído com sucesso" });
     } catch (erro) {
+        if (conn) await conn.rollback().catch(() => {});
         console.error(erro);
-
-        res.status(500).json({
-            erro: "Erro ao excluir pedido"
-        });
+        res.status(500).json({ erro: "Erro ao excluir pedido" });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
