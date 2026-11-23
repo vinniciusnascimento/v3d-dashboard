@@ -662,10 +662,16 @@ function financePage() {
         <p>Receitas, despesas e lucro da V3D. Pedidos concluídos entram aqui automaticamente.</p>
     </div>
 
-    <button type="button" class="btn-primary" id="new-finance-entry">
-        <i data-lucide="plus"></i>
-        Novo lançamento
-    </button>
+    <div class="finance-header-actions">
+        <button type="button" class="btn-cancel" id="finance-export-pdf">
+            <i data-lucide="download"></i>
+            Exportar PDF
+        </button>
+        <button type="button" class="btn-primary" id="new-finance-entry">
+            <i data-lucide="plus"></i>
+            Novo lançamento
+        </button>
+    </div>
 </header>
 
 <!-- Indicadores do período -->
