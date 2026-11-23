@@ -1432,6 +1432,39 @@ main h1 {
   color: #FCA5A5;
 }
 
+.finance-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.finance-header-actions button {
+  white-space: nowrap;
+}
+
+.finance-header-actions .btn-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.finance-header-actions .btn-cancel:not(:disabled):hover {
+  background: var(--background);
+}
+
+.finance-header-actions .btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.finance-header-actions .btn-cancel svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* Dígitos de largura fixa: o valor não "treme" enquanto o número conta */
 #finance-income,
 #finance-expense,
@@ -1765,6 +1798,11 @@ main h1 {
   }
 
   .page-header .btn-primary {
+    width: 100%;
+  }
+
+  .finance-header-actions,
+  .finance-header-actions .btn-cancel {
     width: 100%;
   }
 

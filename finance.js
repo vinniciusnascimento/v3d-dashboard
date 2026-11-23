@@ -21,7 +21,7 @@ const FINANCE_CATEGORIES = {
     receita: ["Venda avulsa", "Outros"],
 };
 
-let financeEntries = [];
+let financeData = null;
 const FINANCE_PAGE_SIZE = 10;
 let financeCurrentPage = 1;
 let financeRequestId = 0;   // descarta respostas antigas se o período mudar no meio
@@ -116,14 +116,11 @@ function renderFinanceSummary(summary) {
 
 /* ---------- Lista ---------- */
 
-function renderFinanceList() {
-    const list = document.getElementById("finance-list");
-    if (!list || list.hasAttribute("aria-busy") || !financeEntries) return;
-
+function getFilteredFinanceEntries(entries) {
     const type = document.getElementById("finance-type-filter").value;
     const term = document.getElementById("finance-search").value.toLowerCase().trim();
 
-    const entries = financeEntries.filter((entry) => {
+    return entries.filter((entry) => {
         const matchType = !type || entry.type === type;
         const matchTerm = !term
             || entry.description.toLowerCase().includes(term)
@@ -131,7 +128,13 @@ function renderFinanceList() {
 
         return matchType && matchTerm;
     });
+}
 
+function renderFinanceList() {
+    const list = document.getElementById("finance-list");
+    if (!list || list.hasAttribute("aria-busy") || !financeData) return;
+
+    const entries = getFilteredFinanceEntries(financeData.entries);
     const totalPages = Math.max(1, Math.ceil(entries.length / FINANCE_PAGE_SIZE));
     financeCurrentPage = Math.min(financeCurrentPage, totalPages);
     const start = (financeCurrentPage - 1) * FINANCE_PAGE_SIZE;
@@ -250,7 +253,7 @@ async function loadFinance() {
 
         if (requestId !== financeRequestId || !list.isConnected) return;
 
-        financeEntries = data.entries || [];
+        financeData = { entries: data.entries || [], summary: data.summary, period };
         renderFinanceSummary(data.summary);
         list.removeAttribute("aria-busy");
         renderFinanceList();
@@ -258,7 +261,7 @@ async function loadFinance() {
         console.error("Erro ao carregar financeiro:", erro);
         if (requestId !== financeRequestId || !list.isConnected) return;
 
-        financeEntries = null;
+        financeData = null;
         count.textContent = "";
         list.innerHTML = '<p class="products-empty" role="alert">Não foi possível carregar o financeiro.</p>';
         metrics.forEach((metric) => { metric.textContent = "—"; });
@@ -268,6 +271,183 @@ async function loadFinance() {
             list.removeAttribute("aria-busy");
             metrics.forEach((metric) => metric.removeAttribute("aria-busy"));
         }
+    }
+}
+
+/* ---------- Exportação em PDF ---------- */
+
+async function buildFinancePdf(entries, summary, period) {
+    const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+    const pdf = await PDFDocument.create();
+    pdf.setTitle("Financeiro | V3D");
+    const regular = await pdf.embedFont(StandardFonts.Helvetica);
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 36;
+    const contentWidth = pageWidth - 2 * margin;
+    const bottom = pageHeight - margin - 20;
+    const columnEdges = [margin, 99, 291, 377, 461, pageWidth - margin];
+    const labels = ["Data", "Descrição", "Categoria", "Pagamento", "Valor"];
+    const ink = rgb(0.063, 0.071, 0.063);
+    const muted = rgb(0.357, 0.392, 0.345);
+    const green = rgb(0, 0.149, 0.051);
+    const greenSoft = rgb(0.890, 0.961, 0.800);
+    const paper = rgb(0.965, 0.969, 0.945);
+    const white = rgb(1, 1, 1);
+    const charset = new Set(regular.getCharacterSet());
+    const rangeLabel = period.from
+        ? `${formatFinanceDate(period.from)} a ${formatFinanceDate(period.to)}`
+        : "Todo o período";
+
+    function drawText(page, text, x, top, { font = regular, size = 9, color = ink, right = false } = {}) {
+        page.drawText(text, {
+            x: right ? x - font.widthOfTextAtSize(text, size) : x,
+            y: pageHeight - top - size,
+            font,
+            size,
+            color,
+        });
+    }
+
+    function drawBox(page, x, top, width, height, color) {
+        page.drawRectangle({ x, y: pageHeight - top - height, width, height, color });
+    }
+
+    function wrapCell(value, width) {
+        // As fontes padrão do PDF cobrem os acentos em português, mas não todo o Unicode.
+        const normalized = String(value ?? "").normalize("NFC")
+            .replace(/\s+/g, " ").replace(/[‐-―−]/g, "-").trim();
+        let remaining = Array.from(normalized, (char) => charset.has(char.codePointAt(0)) ? char : "?")
+            .join("") || "-";
+        const lines = [];
+
+        while (remaining) {
+            let length = 1;
+            while (length < remaining.length && regular.widthOfTextAtSize(remaining.slice(0, length + 1), 9) <= width) {
+                length++;
+            }
+            if (length < remaining.length && remaining[length] !== " ") {
+                const space = remaining.lastIndexOf(" ", length - 1);
+                if (space > 0) length = space;
+            }
+            lines.push(remaining.slice(0, length));
+            remaining = remaining.slice(length).trimStart();
+        }
+
+        return lines;
+    }
+
+    function startPage(firstPage) {
+        const page = pdf.addPage([pageWidth, pageHeight]);
+        drawText(page, "Financeiro | V3D", margin, margin, { font: bold, size: 22, color: green });
+        drawText(page, `Período: ${rangeLabel}`, margin, 67, { size: 10, color: muted });
+
+        if (firstPage) {
+            const countLabel = entries.length === 1 ? "lançamento exportado" : "lançamentos exportados";
+            drawText(page, `${entries.length} ${countLabel}`, margin, 82, { color: muted });
+            drawText(page, "Totais do período", margin, 106, { font: bold, size: 11 });
+
+            const cardWidth = (contentWidth - 16) / 3;
+            [
+                ["Receitas", summary.receitas],
+                ["Despesas", summary.despesas],
+                ["Lucro", summary.lucro],
+            ].forEach(([label, value], index) => {
+                const x = margin + index * (cardWidth + 8);
+                drawBox(page, x, 124, cardWidth, 48, greenSoft);
+                drawText(page, label, x + 10, 132, { color: muted });
+                drawText(page, formatMoney(value).replace(/\s/g, " "), x + 10, 146, { font: bold, size: 13 });
+            });
+        }
+
+        const tableTop = firstPage ? 188 : 91;
+        drawBox(page, margin, tableTop, contentWidth, 24, green);
+        labels.forEach((label, index) => {
+            const right = index === labels.length - 1;
+            const x = right ? columnEdges[index + 1] - 8 : columnEdges[index] + 8;
+            drawText(page, label, x, tableTop + 7, { font: bold, color: white, right });
+        });
+
+        return { page, top: tableTop + 24 };
+    }
+
+    let { page, top } = startPage(true);
+    entries.forEach((entry, rowIndex) => {
+        const isIncome = entry.type === "receita";
+        const cells = [
+            formatFinanceDate(entry.entry_date),
+            entry.description,
+            entry.category,
+            isIncome ? paymentDescription(entry.payment_method, entry.installments) : "-",
+            `${isIncome ? "+" : "-"} ${formatMoney(entry.amount)}`,
+        ].map((value, index) => wrapCell(value, columnEdges[index + 1] - columnEdges[index] - 16));
+        const rowHeight = Math.max(...cells.map((lines) => lines.length)) * 12 + 12;
+
+        if (top + rowHeight > bottom) {
+            ({ page, top } = startPage(false));
+        }
+        if (rowIndex % 2 === 0) drawBox(page, margin, top, contentWidth, rowHeight, paper);
+
+        cells.forEach((lines, index) => {
+            const right = index === cells.length - 1;
+            const x = right ? columnEdges[index + 1] - 8 : columnEdges[index] + 8;
+            lines.forEach((line, lineIndex) => {
+                drawText(page, line, x, top + 6 + lineIndex * 12, { right });
+            });
+        });
+        top += rowHeight;
+    });
+
+    const pages = pdf.getPages();
+    pages.forEach((page, index) => {
+        drawText(page, `Página ${index + 1} de ${pages.length}`, pageWidth - margin, pageHeight - margin, {
+            color: muted,
+            right: true,
+        });
+    });
+
+    return pdf.save();
+}
+
+async function exportFinancePdf(event) {
+    const button = event.currentTarget;
+    const list = document.getElementById("finance-list");
+    if (list.hasAttribute("aria-busy")) {
+        alert("Aguarde o carregamento dos lançamentos para exportar o PDF.");
+        return;
+    }
+
+    button.disabled = true;
+    try {
+        if (!financeData) throw new Error("Dados do Financeiro indisponíveis.");
+
+        const { entries, summary, period } = financeData;
+        const filteredEntries = getFilteredFinanceEntries(entries);
+        if (!filteredEntries.length) {
+            alert("Nenhum lançamento corresponde aos filtros ativos para exportar.");
+            return;
+        }
+        if (!window.PDFLib) throw new Error("Biblioteca PDF indisponível.");
+
+        const bytes = await buildFinancePdf(filteredEntries, summary, period);
+        const anchor = document.createElement("a");
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        try {
+            anchor.href = url;
+            anchor.download = `financeiro-v3d-${localISODate(new Date())}.pdf`;
+            document.body.appendChild(anchor);
+            anchor.click();
+        } finally {
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
+    } catch (error) {
+        console.error("Erro ao exportar financeiro:", error);
+        alert("Não foi possível gerar o PDF do Financeiro. Tente novamente.");
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -722,6 +902,7 @@ function initFinanceInstallments() {
 
 function initFinancePage() {
     financeCurrentPage = 1;
+    document.getElementById("finance-export-pdf").addEventListener("click", exportFinancePdf);
     document.getElementById("finance-pagination").addEventListener("click", (event) => {
         const button = event.target.closest("button[data-page-step]");
         if (!button || button.disabled) return;
