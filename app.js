@@ -105,6 +105,14 @@ function escapeHtml(text = "") {
     return div.innerHTML;
 }
 
+// Link clicável do MakerWorld (só http/https). Devolve "" quando não há link.
+function makerworldLinkHtml(url, label = "Abrir no MakerWorld") {
+    if (!/^https?:\/\//i.test(url || "")) return "";
+    const href = escapeHtml(url).replace(/"/g, "&quot;");
+    return `<a class="makerworld-link" href="${href}" target="_blank" rel="noopener noreferrer">` +
+        `<i data-lucide="external-link"></i>${escapeHtml(label)}</a>`;
+}
+
 // colors vem como JSON: pode chegar como array ou como string
 function parseColors(value) {
     if (!value) return [];
@@ -337,6 +345,7 @@ function renderProducts(produtos) {
                         <div class="product-specs">
                             ${produto.size ? `<span class="spec-chip"><i data-lucide="ruler"></i>${escapeHtml(produto.size)}</span>` : ""}
                             ${produto.material ? `<span class="spec-chip"><i data-lucide="box"></i>${escapeHtml(produto.material)}</span>` : ""}
+                            ${/^https?:\/\//i.test(produto.makerworld_url || "") ? `<a class="spec-chip" href="${escapeHtml(produto.makerworld_url).replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>MakerWorld</a>` : ""}
                         </div>
 
                         ${cores.length ? `<div class="product-colors">${cores.map(renderColor).join("")}</div>` : ""}
@@ -466,6 +475,7 @@ function initProductForm() {
         formData.append("price", document.querySelector("#product-price").value);
         formData.append("size", document.querySelector("#product-size").value.trim());
         formData.append("material", document.querySelector("#product-material").value.trim());
+        formData.append("makerworld_url", document.querySelector("#product-makerworld").value.trim());
         formData.append("colors", JSON.stringify(newColorsField.get()));
 
         if (imageFile) formData.append("image", imageFile);
@@ -476,7 +486,11 @@ function initProductForm() {
                 body: formData, // sem Content-Type: o navegador define sozinho
             });
 
-            if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
+            if (!resposta.ok) {
+                const { erro } = await resposta.json().catch(() => ({}));
+                if (erro) return alert(erro);
+                throw new Error(`HTTP ${resposta.status}`);
+            }
 
             productForm.reset();
             newColorsField.reset();
@@ -497,6 +511,7 @@ function initProductForm() {
 function initActionModals() {
     const editModal = document.getElementById("edit-modal");
     const deleteModal = document.getElementById("delete-modal");
+    const detailModal = document.getElementById("product-detail-modal");
 
     if (!editModal || !deleteModal || !productsList) return;
 
@@ -506,6 +521,7 @@ function initActionModals() {
     const category = document.querySelector("#edit-category");
     const size = document.querySelector("#edit-size");
     const material = document.querySelector("#edit-material");
+    const makerworld = document.querySelector("#edit-makerworld");
     const imageInput = document.querySelector("#edit-image");
     const btnSave = document.querySelector("#save-edit");
     const btnDelete = document.querySelector("#confirm-delete");
@@ -526,10 +542,37 @@ function initActionModals() {
         category.value = produto.category ?? "";
         size.value = produto.size ?? "";
         material.value = produto.material ?? "";
+        makerworld.value = produto.makerworld_url ?? "";
         imageInput.value = "";
         editColorsField.set(parseColors(produto.colors));
 
         editModal.hidden = false;
+    }
+
+    function openDetailModal(productId) {
+        const produto = allProducts?.find((p) => String(p.id) === String(productId));
+        if (!produto || !detailModal) return;
+
+        detailModal.dataset.productId = productId;
+        const setText = (id, text) => { document.getElementById(id).textContent = text; };
+
+        setText("product-detail-category", produto.category || "");
+        setText("product-detail-title", produto.name || "");
+        setText("product-detail-price", formatPrice(produto.price));
+        setText("product-detail-size", produto.size || "Não informado");
+        setText("product-detail-material", produto.material || "Não informado");
+
+        const description = document.getElementById("product-detail-description");
+        description.textContent = produto.desc || "Sem descrição.";
+        description.classList.toggle("is-empty", !produto.desc);
+
+        const link = makerworldLinkHtml(produto.makerworld_url);
+        const linkBox = document.getElementById("product-detail-makerworld");
+        linkBox.innerHTML = link || "Nenhum link cadastrado.";
+        linkBox.classList.toggle("is-empty", !link);
+
+        detailModal.hidden = false;
+        lucide.createIcons();
     }
 
     function openDeleteModal(productId) {
@@ -544,9 +587,19 @@ function initActionModals() {
 
         if (editBtn) openEditModal(editBtn.dataset.id);
         if (deleteBtn) openDeleteModal(deleteBtn.dataset.id);
+        if (editBtn || deleteBtn || event.target.closest("a")) return;
+
+        // Clique no resto do card abre os detalhes
+        const card = event.target.closest(".product-card");
+        if (card) openDetailModal(card.dataset.id);
     });
 
-    [editModal, deleteModal].forEach((modal) => {
+    document.getElementById("product-detail-edit")?.addEventListener("click", () => {
+        closeModal(detailModal);
+        openEditModal(detailModal.dataset.productId);
+    });
+
+    [editModal, deleteModal, detailModal].filter(Boolean).forEach((modal) => {
         modal.querySelectorAll("[data-close-modal]").forEach((btn) => {
             btn.addEventListener("click", () => closeModal(modal));
         });
@@ -561,7 +614,7 @@ function initActionModals() {
 
     escHandler = (event) => {
         if (event.key !== "Escape") return;
-        [editModal, deleteModal].forEach((modal) => closeModal(modal));
+        [editModal, deleteModal, detailModal].filter(Boolean).forEach((modal) => closeModal(modal));
     };
     document.addEventListener("keydown", escHandler);
 
@@ -578,6 +631,7 @@ function initActionModals() {
         formData.append("category", category.value);
         formData.append("size", size.value.trim());
         formData.append("material", material.value.trim());
+        formData.append("makerworld_url", makerworld.value.trim());
         formData.append("colors", JSON.stringify(editColorsField.get()));
 
         if (imageInput.files[0]) formData.append("image", imageInput.files[0]);
@@ -590,7 +644,11 @@ function initActionModals() {
                 body: formData,
             });
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const { erro } = await response.json().catch(() => ({}));
+                if (erro) return alert(erro);
+                throw new Error(`HTTP ${response.status}`);
+            }
 
             await loadProducts();
             closeModal(editModal);

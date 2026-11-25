@@ -168,6 +168,12 @@ const productsTemplate = `
                     </div>
 
                     <div class="form-group">
+                        <label for="product-makerworld">Link do MakerWorld</label>
+                        <input type="url" id="product-makerworld"
+                            placeholder="https://makerworld.com/pt/models/..." maxlength="500">
+                    </div>
+
+                    <div class="form-group">
                         <label for="color-input">Cores disponíveis</label>
 
                         <div class="color-input-row">
@@ -260,6 +266,12 @@ const productsTemplate = `
                     </div>
 
                     <div class="form-group">
+                        <label for="edit-makerworld">Link do MakerWorld</label>
+                        <input type="url" id="edit-makerworld"
+                            placeholder="https://makerworld.com/pt/models/..." maxlength="500">
+                    </div>
+
+                    <div class="form-group">
                         <label for="edit-color-input">Cores disponíveis</label>
 
                         <div class="color-input-row">
@@ -313,6 +325,56 @@ const productsTemplate = `
                 <button type="button" class="btn-danger" id="confirm-delete">
                     <i data-lucide="trash-2"></i>
                     Excluir
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de detalhes do produto -->
+    <div class="modal-overlay" id="product-detail-modal" hidden>
+        <div class="product-modal order-detail-modal" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+
+            <div class="modal-header">
+                <div>
+                    <span class="order-detail-number" id="product-detail-category"></span>
+                    <h2 id="product-detail-title"></h2>
+                </div>
+                <button type="button" class="icon-button" data-close-modal aria-label="Fechar">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="form-body">
+                <dl class="order-detail-grid">
+                    <div class="order-detail-item">
+                        <dt>Preço</dt>
+                        <dd id="product-detail-price"></dd>
+                    </div>
+                    <div class="order-detail-item">
+                        <dt>Tamanho</dt>
+                        <dd id="product-detail-size"></dd>
+                    </div>
+                    <div class="order-detail-item">
+                        <dt>Material</dt>
+                        <dd id="product-detail-material"></dd>
+                    </div>
+                </dl>
+
+                <div class="order-detail-item">
+                    <dt>MakerWorld</dt>
+                    <dd id="product-detail-makerworld"></dd>
+                </div>
+
+                <div class="order-detail-item">
+                    <dt>Descrição</dt>
+                    <dd class="order-detail-notes" id="product-detail-description"></dd>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" data-close-modal>Fechar</button>
+                <button type="button" class="btn-primary" id="product-detail-edit">
+                    <i data-lucide="pencil"></i> Editar
                 </button>
             </div>
         </div>
@@ -631,6 +693,11 @@ function ordersPage() {
                     <dd id="order-detail-payment"></dd>
                 </div>
             </dl>
+
+            <div class="order-detail-item" id="order-detail-makerworld-group" hidden>
+                <dt>Links do MakerWorld</dt>
+                <dd><ul class="makerworld-links" id="order-detail-makerworld"></ul></dd>
+            </div>
 
             <div class="order-detail-item">
                 <dt>Observações</dt>

@@ -59,8 +59,39 @@ const salvarImagem = (conn, productId, file) =>
         [productId, file.mimetype, file.buffer]
     );
 
+// Link do modelo no MakerWorld. A coluna se cria sozinha (sem script de migração).
+let colunaMakerworldPronta = null;
+function garantirColunaMakerworld() {
+    if (!colunaMakerworldPronta) {
+        colunaMakerworldPronta = db.query(
+            'ALTER TABLE products ADD COLUMN makerworld_url VARCHAR(500) NULL'
+        ).catch((erro) => {
+            if (erro.code === 'ER_DUP_FIELDNAME') return;
+            colunaMakerworldPronta = null; // tenta de novo na próxima requisição
+            throw erro;
+        });
+    }
+    return colunaMakerworldPronta;
+}
+
+// Aceita só links http(s) do MakerWorld; vazio vira null. undefined = inválido.
+function normalizarLinkMakerworld(valor) {
+    const texto = String(valor ?? '').trim();
+    if (!texto) return null;
+    try {
+        const url = new URL(texto);
+        const host = url.hostname.toLowerCase();
+        const ehMakerworld = /^(.+\.)?makerworld\.com(\.cn)?$/.test(host);
+        if (!['http:', 'https:'].includes(url.protocol) || !ehMakerworld || texto.length > 500) return undefined;
+        return url.href;
+    } catch {
+        return undefined;
+    }
+}
+
 router.get('/produtos', async (req, res) => {
     try {
+        await garantirColunaMakerworld();
         const [produtos] = await db.query(
             `SELECT p.*, (pi.product_id IS NOT NULL) AS has_image
                FROM products p
@@ -98,11 +129,16 @@ router.post("/produtos", receberImagem, async (req, res) => {
     try {
         const { name, desc, category, price, size, material, colors } = req.body;
         const file = req.file;
+        const makerworldUrl = normalizarLinkMakerworld(req.body.makerworld_url);
+        if (makerworldUrl === undefined) {
+            return res.status(400).json({ erro: 'Informe um link válido do MakerWorld' });
+        }
 
+        await garantirColunaMakerworld();
         const [result] = await db.query(
-            `INSERT INTO products (name, \`desc\`, category, price, size, material, colors, image)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [name, desc, category, price || null, size, material, colors, file ? file.originalname : null]
+            `INSERT INTO products (name, \`desc\`, category, price, size, material, colors, makerworld_url, image)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, desc, category, price || null, size, material, colors, makerworldUrl, file ? file.originalname : null]
         );
 
         if (file) await salvarImagem(db, result.insertId, file);
@@ -120,14 +156,19 @@ router.put('/produtos/:id', receberImagem, async (req, res) => {
         const { name, desc, category, price, size, material, colors } = req.body;
         const file = req.file;
         const image = file ? file.originalname : null;
+        const makerworldUrl = normalizarLinkMakerworld(req.body.makerworld_url);
+        if (makerworldUrl === undefined) {
+            return res.status(400).json({ erro: 'Informe um link válido do MakerWorld' });
+        }
 
+        await garantirColunaMakerworld();
         const [result] = await db.query(
             `UPDATE products
                 SET name = ?, \`desc\` = ?, category = ?, price = ?,
-                    size = ?, material = ?, colors = ?,
+                    size = ?, material = ?, colors = ?, makerworld_url = ?,
                     image = COALESCE(?, image)
               WHERE id = ?`,
-            [name, desc, category, price || null, size, material, colors, image, id]
+            [name, desc, category, price || null, size, material, colors, makerworldUrl, image, id]
         );
 
         if (result.affectedRows === 0) {

@@ -1361,6 +1361,18 @@ function openOrderDetail(id) {
     setText("order-detail-payment", paymentDescription(order.payment_method, order.installments) || "Não informada");
     setText("order-detail-status", statusLabel);
 
+    // Links do MakerWorld dos produtos do pedido (pelo id; pedidos antigos, pelo nome)
+    const catalogo = allProducts?.length ? allProducts : pickerProducts;
+    const links = orderItemsOf(order).map((item) => {
+        const produto = catalogo.find((p) => item.product_id != null
+            ? String(p.id) === String(item.product_id)
+            : (p.name || "").trim().toLowerCase() === (item.name || "").trim().toLowerCase());
+        const link = makerworldLinkHtml(produto?.makerworld_url, item.name);
+        return link ? `<li>${link}</li>` : "";
+    }).filter(Boolean);
+    document.getElementById("order-detail-makerworld").innerHTML = links.join("");
+    document.getElementById("order-detail-makerworld-group").hidden = !links.length;
+
     const notes = document.getElementById("order-detail-notes");
     notes.textContent = order.notes || "Sem observações.";
     notes.classList.toggle("is-empty", !order.notes);
