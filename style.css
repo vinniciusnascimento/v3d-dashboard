@@ -762,6 +762,15 @@ main h1 {
   height: 12px;
 }
 
+a.spec-chip {
+  text-decoration: none;
+}
+
+a.spec-chip:hover {
+  color: var(--text);
+  border-color: currentColor;
+}
+
 .product-colors {
   display: flex;
   flex-wrap: wrap;
@@ -1309,8 +1318,42 @@ main h1 {
   white-space: pre-wrap;
 }
 
-.order-detail-notes.is-empty {
+.order-detail-notes.is-empty,
+.order-detail-item dd.is-empty {
   color: var(--text-muted);
+}
+
+.makerworld-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.makerworld-link:hover {
+  text-decoration: underline;
+}
+
+.makerworld-link svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.makerworld-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.product-card {
+  cursor: pointer;
 }
 
 /* ============================================================
